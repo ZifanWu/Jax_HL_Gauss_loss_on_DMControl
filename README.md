@@ -65,6 +65,7 @@ curl -OL https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
 mkdir ~/.mujoco
 tar -zxf mujoco210-linux-x86_64.tar.gz -C ~/.mujoco
 rm mujoco210-linux-x86_64.tar.gz
+pip install cython==0.29.21
 ```
 
 To install, run
