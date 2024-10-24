@@ -47,3 +47,38 @@ class DoubleCritic(nn.Module):
         qs = VmapCritic(self.hidden_dims,
                         activations=self.activations)(states, actions)
         return qs
+    
+
+class DistributionalCritic(nn.Module):
+    hidden_dims: Sequence[int]
+    n_logits: int
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+
+    @nn.compact
+    def __call__(self, observations: jnp.ndarray,
+                 actions: jnp.ndarray) -> jnp.ndarray:
+        inputs = jnp.concatenate([observations, actions], -1)
+        critic = MLP((*self.hidden_dims, self.n_logits),
+                     activations=self.activations)(inputs)
+        return critic
+
+
+class DoubleDistributionalCritic(nn.Module):
+    hidden_dims: Sequence[int]
+    n_logits: int
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    num_qs: int = 2
+
+    @nn.compact
+    def __call__(self, states, actions):
+
+        VmapCritic = nn.vmap(DistributionalCritic,
+                             variable_axes={'params': 0},
+                             split_rngs={'params': True},
+                             in_axes=None,
+                             out_axes=0,
+                             axis_size=self.num_qs)
+        qs = VmapCritic(self.hidden_dims,
+                        self.n_logits,
+                        activations=self.activations)(states, actions)
+        return qs

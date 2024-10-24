@@ -9,7 +9,7 @@ from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 
 from jaxrl.agents import (AWACLearner, DDPGLearner, REDQLearner, SACLearner,
-                          SACV1Learner)
+                          SACV1Learner, SACHLGLearner)
 from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
@@ -35,7 +35,7 @@ flags.DEFINE_string('wandb_project_name', "jaxrl", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/sac_default.py',
+    'configs/sac_hlg.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -96,6 +96,10 @@ def main(_):
                             env.action_space.sample()[np.newaxis], **kwargs)
     elif algo == 'ddpg':
         agent = DDPGLearner(FLAGS.seed,
+                            env.observation_space.sample()[np.newaxis],
+                            env.action_space.sample()[np.newaxis], **kwargs)
+    elif algo == 'sac_hlg':
+        agent = SACHLGLearner(FLAGS.seed,
                             env.observation_space.sample()[np.newaxis],
                             env.action_space.sample()[np.newaxis], **kwargs)
     else:
