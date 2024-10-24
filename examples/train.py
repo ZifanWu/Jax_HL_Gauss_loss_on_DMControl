@@ -17,7 +17,7 @@ from jaxrl.utils import make_env
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'HalfCheetah-v2', 'Environment name.')
-flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', './scratch/general/nfs1/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -31,8 +31,8 @@ flags.DEFINE_integer('start_training', int(1e4),
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
 flags.DEFINE_boolean('track', False, 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "jaxrl", "The wandb's project name.")
-flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
+flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project name.")
+flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's project")
 config_flags.DEFINE_config_file(
     'config',
     'configs/sac_hlg.py',

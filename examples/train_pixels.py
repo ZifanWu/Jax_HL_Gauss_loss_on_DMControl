@@ -16,7 +16,7 @@ from jaxrl.utils import make_env
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'cheetah-run', 'Environment name.')
-flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', './scratch/general/nfs1/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -163,7 +163,7 @@ def main(_):
 
 
 if __name__ == '__main__':
-    os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.1'
+    os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.5'
     os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] ='false'
     os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
