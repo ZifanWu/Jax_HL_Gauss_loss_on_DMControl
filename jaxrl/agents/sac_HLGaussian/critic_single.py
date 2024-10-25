@@ -15,11 +15,9 @@ def update(transform_to_probs, transform_from_probs,
     dist = actor(batch.next_observations)
     next_actions = dist.sample(seed=key)
     next_log_probs = dist.log_prob(next_actions)
-    next_q1_logits, next_q2_logits = target_critic(batch.next_observations, next_actions) # (B,n_logits)
-    next_q1_probs, next_q2_probs = nn.softmax(next_q1_logits), nn.softmax(next_q2_logits)
-    next_q1, next_q2 = transform_from_probs(next_q1_probs), transform_from_probs(next_q2_probs)
-
-    next_q = jnp.minimum(next_q1, next_q2)
+    next_q_logits = target_critic(batch.next_observations, next_actions) # (B, n_logits)
+    next_q_probs = nn.softmax(next_q_logits)
+    next_q = transform_from_probs(next_q_probs)
 
     target_q = batch.rewards + discount * batch.masks * next_q
     target_probs = transform_to_probs(target_q)
@@ -29,13 +27,12 @@ def update(transform_to_probs, transform_from_probs,
         target_q -= discount * batch.masks * temp() * next_log_probs
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
-        q1_logits, q2_logits = critic.apply_fn({'params': critic_params}, batch.observations,
+        q_logits = critic.apply_fn({'params': critic_params}, batch.observations,
                                  batch.actions)
-        critic_loss = optax.softmax_cross_entropy(q1_logits, target_probs).mean() \
-                    + optax.softmax_cross_entropy(q2_logits, target_probs).mean()
-        # q1_probs, q2_probs = nn.softmax(q1_logits), nn.softmax(q2_logits)
+        critic_loss = optax.softmax_cross_entropy(q_logits, target_probs).mean()
+        # q_probs = nn.softmax(q_logits)
         # critic_loss = (q1_probs * jnp.log(target_probs)).mean() + (q2_probs * jnp.log(target_probs)).mean()
-        # q1, q2 = transform_from_probs(q1_probs), transform_from_probs(q2_probs)
+        # q = transform_from_probs(q_probs)
         return critic_loss, {
             'critic_loss': critic_loss,
             # 'q1': q1.mean(),

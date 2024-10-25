@@ -35,7 +35,7 @@ flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project
 flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's project")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/sac_hlg.py',
+    'configs/sac_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -101,7 +101,8 @@ def main(_):
     elif algo == 'sac_hlg':
         agent = SACHLGLearner(FLAGS.seed,
                             env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
+                            env.action_space.sample()[np.newaxis], 
+                            batch_size=FLAGS.batch_size, **kwargs)
     else:
         raise NotImplementedError()
 

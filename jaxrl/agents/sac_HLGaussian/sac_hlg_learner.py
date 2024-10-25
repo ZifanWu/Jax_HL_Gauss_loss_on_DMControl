@@ -11,7 +11,7 @@ import optax
 from jaxrl.agents.sac import temperature
 from jaxrl.agents.sac_HLGaussian.actor import update as update_actor
 from jaxrl.agents.sac.critic import target_update
-from jaxrl.agents.sac_HLGaussian.critic import update as update_critic
+
 from jaxrl.datasets import Batch
 from jaxrl.networks import critic_net, policies
 from jaxrl.networks.common import InfoDict, Model, PRNGKey
@@ -19,30 +19,51 @@ from jaxrl.networks.common import InfoDict, Model, PRNGKey
 
 # @functools.partial(jax.jit,
 #                    static_argnames=('min_value', 'max_value', 'num_bins', 'sigma'))
-def hl_gauss_transform(min_value: float, max_value: float, num_bins: int, sigma: float,):
-    support = jnp.linspace(min_value, max_value, num_bins + 1, dtype=jnp.float32)
-    def transform_to_probs(target: jax.Array) -> jax.Array:
-        target = jnp.clip(target, min_value, max_value)
-        cdf_evals = jax.scipy.special.erf((support - target) / (jnp.sqrt(2) * sigma))
-        z = cdf_evals[-1] - cdf_evals[0]
-        bin_probs = cdf_evals[1:] - cdf_evals[:-1]
-        return bin_probs / z
-    def transform_from_probs(probs: jax.Array) -> jax.Array:
-        centers = (support[:-1] + support[1:]) / 2
-        return jnp.sum(probs * centers)
-    return transform_to_probs, transform_from_probs
+# def hl_gauss_transform(min_value: float, max_value: float, num_bins: int, sigma: float,):
+#     support = jnp.linspace(min_value, max_value, num_bins, dtype=jnp.float32)
+#     centers = (support[:-1] + support[1:]) / 2
+#     def transform_to_probs(target):
+#         target = jnp.clip(target, min_value, max_value)
+#         cdf_evals = jax.scipy.special.erf((support - target) / (jnp.sqrt(2) * sigma))
+#         z = cdf_evals[-1] - cdf_evals[0]
+#         bin_probs = cdf_evals[1:] - cdf_evals[:-1]
+#         return bin_probs / z
+#     def transform_from_probs(probs):
+#         return jnp.sum(probs * centers)
+#     return transform_to_probs, transform_from_probs
+
+MIN_VALUE = 0
+MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
 
 
 @functools.partial(jax.jit,
-                   static_argnames=('backup_entropy', 'update_target'))
-def _update_jit(
-    transform_to_probs, transform_from_probs, 
-    rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
-    temp: Model, batch: Batch, discount: float, tau: float,
-    target_entropy: float, backup_entropy: bool, update_target: bool
-) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
+                   static_argnames=('backup_entropy', 'update_target', 'n_logits', 'sigma', 'batch_size', 'double_q')) # TODO remember to turn it on when done debugging
+def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool,
+                rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
+                temp: Model, batch: Batch, discount: float, tau: float,
+                target_entropy: float, backup_entropy: bool, update_target: bool
+            ) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
 
     rng, key = jax.random.split(rng)
+
+    support = jnp.linspace(MIN_VALUE, MAX_VALUE, n_logits + 1, dtype=jnp.float32) # logits are centers! (ie, num of classes)
+    centers = (support[:-1] + support[1:]) / 2
+    support = support[None, :].repeat(batch_size, axis=0) # (B, n_logits+1)
+    
+    def transform_to_probs(target): # (B,)
+        target = jnp.clip(target, MIN_VALUE, MAX_VALUE)
+        cdf_evals = jax.scipy.special.erf((support - target[:, None]) / (jnp.sqrt(2) * sigma)) # (B, n_logits+1)
+        z = cdf_evals[:, -1] - cdf_evals[:, 0] # (B,)
+        bin_probs = cdf_evals[:, 1:] - cdf_evals[:, :-1] # (B, n_logits)
+        return bin_probs / z[:, None] # (B, n_logits)
+    def transform_from_probs(probs):
+        return (probs * centers).sum(-1) # (B, n_logits)
+    
+    if double_q:
+        from jaxrl.agents.sac_HLGaussian.critic import update as update_critic
+    else:
+        from jaxrl.agents.sac_HLGaussian.critic_single import update as update_critic
+
     new_critic, critic_info = update_critic(transform_to_probs, 
                                             transform_from_probs,
                                             key,
@@ -71,8 +92,6 @@ def _update_jit(
         **alpha_info
     }
 
-MIN_VALUE = 0
-MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
 
 class SACHLGLearner(object):
 
@@ -86,6 +105,8 @@ class SACHLGLearner(object):
                  hidden_dims: Sequence[int] = (256, 256),
                  n_logits: int = 51,
                  sigma: float=1.5,
+                 batch_size: int=256,
+                 double_q: bool = True,
                  discount: float = 0.99,
                  tau: float = 0.005,
                  target_update_period: int = 1,
@@ -122,7 +143,10 @@ class SACHLGLearner(object):
                              inputs=[actor_key, observations],
                              tx=optax.adam(learning_rate=actor_lr))
 
-        critic_def = critic_net.DoubleDistributionalCritic(hidden_dims, n_logits)
+        if double_q:
+            critic_def = critic_net.DoubleDistributionalCritic(hidden_dims, n_logits)
+        else:
+            critic_def = critic_net.DistributionalCritic(hidden_dims, n_logits)
         critic = Model.create(critic_def,
                               inputs=[critic_key, observations, actions],
                               tx=optax.adam(learning_rate=critic_lr))
@@ -133,8 +157,10 @@ class SACHLGLearner(object):
                             inputs=[temp_key],
                             tx=optax.adam(learning_rate=temp_lr))
         
-        transform_to_probs, transform_from_probs = hl_gauss_transform(MIN_VALUE, MAX_VALUE, n_logits+1, sigma)
-        self.transform_to_probs, self.transform_from_probs = transform_to_probs, transform_from_probs
+        self.n_logits = n_logits
+        self.sigma = sigma
+        self.batch_size = batch_size
+        self.double_q = double_q
 
         self.actor = actor
         self.critic = critic
@@ -159,7 +185,7 @@ class SACHLGLearner(object):
         self.step += 1
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
-            self.transform_to_probs, self.transform_from_probs,
+            self.n_logits, self.sigma, self.batch_size, self.double_q,
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
             self.backup_entropy, self.step % self.target_update_period == 0)

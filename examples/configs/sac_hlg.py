@@ -5,6 +5,7 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     config.algo = 'sac_hlg'
+    config.double_q = False
 
     config.actor_lr = 3e-4
     config.critic_lr = 3e-4
