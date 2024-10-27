@@ -8,7 +8,7 @@ from jaxrl.datasets import Batch
 from jaxrl.networks.common import InfoDict, Model, Params, PRNGKey
 
 
-def update(transform_to_probs, transform_from_probs,
+def update(transform_to_probs, transform_from_probs, use_entropy,
            key: PRNGKey, actor: Model, critic: Model, target_critic: Model,
            temp: Model, batch: Batch, discount: float,
            backup_entropy: bool) -> Tuple[Model, InfoDict]:
@@ -24,8 +24,7 @@ def update(transform_to_probs, transform_from_probs,
     target_q = batch.rewards + discount * batch.masks * next_q
     target_probs = transform_to_probs(target_q)
 
-
-    if backup_entropy:
+    if backup_entropy and use_entropy:
         target_q -= discount * batch.masks * temp() * next_log_probs
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:

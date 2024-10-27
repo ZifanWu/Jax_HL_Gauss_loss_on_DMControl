@@ -9,7 +9,6 @@ import numpy as np
 import optax
 
 from jaxrl.agents.sac import temperature
-from jaxrl.agents.sac_HLGaussian.actor import update as update_actor
 from jaxrl.agents.sac.critic import target_update
 
 from jaxrl.datasets import Batch
@@ -37,8 +36,8 @@ MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
 
 
 @functools.partial(jax.jit,
-                   static_argnames=('backup_entropy', 'update_target', 'n_logits', 'sigma', 'batch_size', 'double_q')) # TODO remember to turn it on when done debugging
-def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool,
+                   static_argnames=('backup_entropy', 'update_target', 'n_logits', 'sigma', 'batch_size', 'double_q', 'use_entropy')) # TODO remember to turn it on when done debugging
+def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool, use_entropy: bool,
                 rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
                 temp: Model, batch: Batch, discount: float, tau: float,
                 target_entropy: float, backup_entropy: bool, update_target: bool
@@ -61,11 +60,14 @@ def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool,
     
     if double_q:
         from jaxrl.agents.sac_HLGaussian.critic import update as update_critic
+        from jaxrl.agents.sac_HLGaussian.actor import update as update_actor
     else:
         from jaxrl.agents.sac_HLGaussian.critic_single import update as update_critic
+        from jaxrl.agents.sac_HLGaussian.actor_single import update as update_actor
 
     new_critic, critic_info = update_critic(transform_to_probs, 
                                             transform_from_probs,
+                                            use_entropy,
                                             key,
                                             actor,
                                             critic,
@@ -82,9 +84,9 @@ def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool,
     rng, key = jax.random.split(rng)
     new_actor, actor_info = update_actor(transform_to_probs, 
                                          transform_from_probs, 
+                                         use_entropy,
                                          key, actor, new_critic, temp, batch)
-    new_temp, alpha_info = temperature.update(temp, actor_info['entropy'],
-                                              target_entropy)
+    new_temp, alpha_info = temperature.update(temp, actor_info['entropy'], target_entropy)
 
     return rng, new_actor, new_critic, new_target_critic, new_temp, {
         **critic_info,
@@ -107,6 +109,7 @@ class SACHLGLearner(object):
                  sigma: float=1.5,
                  batch_size: int=256,
                  double_q: bool = True,
+                 use_entropy: bool = True,
                  discount: float = 0.99,
                  tau: float = 0.005,
                  target_update_period: int = 1,
@@ -161,6 +164,7 @@ class SACHLGLearner(object):
         self.sigma = sigma
         self.batch_size = batch_size
         self.double_q = double_q
+        self.use_entropy = use_entropy
 
         self.actor = actor
         self.critic = critic
@@ -185,7 +189,7 @@ class SACHLGLearner(object):
         self.step += 1
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
-            self.n_logits, self.sigma, self.batch_size, self.double_q,
+            self.n_logits, self.sigma, self.batch_size, self.double_q, self.use_entropy,
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
             self.backup_entropy, self.step % self.target_update_period == 0)

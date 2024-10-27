@@ -10,6 +10,7 @@ from jaxrl.networks.common import InfoDict, Model, Params, PRNGKey
 
 def update(transform_to_probs, 
            transform_from_probs, 
+           use_entropy,
            key: PRNGKey, actor: Model, critic: Model, temp: Model,
            batch: Batch) -> Tuple[Model, InfoDict]:
 
@@ -21,7 +22,10 @@ def update(transform_to_probs,
         q1_probs, q2_probs = nn.softmax(q1_logits), nn.softmax(q2_logits)
         q1, q2 = transform_from_probs(q1_probs), transform_from_probs(q2_probs)
         q = jnp.minimum(q1, q2)
-        actor_loss = (log_probs * temp() - q).mean()
+        if use_entropy:
+            actor_loss = (log_probs * temp() - q).mean()
+        else:
+            actor_loss = (- q).mean()
         return actor_loss, {
             'actor_loss': actor_loss,
             'entropy': -log_probs.mean()
