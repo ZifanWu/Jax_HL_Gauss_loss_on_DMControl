@@ -8,7 +8,7 @@ from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 
 from jaxrl.networks.common import default_init
-from jaxrl.networks.critic_net import DoubleCritic, DoubleDistributionalCritic, DistributionalCritic
+from jaxrl.networks.critic_net import DoubleCritic
 from jaxrl.networks.policies import NormalTanhPolicy
 
 
@@ -57,52 +57,6 @@ class DrQDoubleCritic(nn.Module):
         x = nn.tanh(x)
 
         return DoubleCritic(self.hidden_dims)(x, actions)
-
-
-class DrQDistributionalDoubleCritic(nn.Module):
-    hidden_dims: Sequence[int]
-    n_logits: int
-    cnn_features: Sequence[int] = (32, 32, 32, 32)
-    cnn_strides: Sequence[int] = (2, 1, 1, 1)
-    cnn_padding: str = 'VALID'
-    latent_dim: int = 50
-
-    @nn.compact
-    def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        x = Encoder(self.cnn_features,
-                    self.cnn_strides,
-                    self.cnn_padding,
-                    name='SharedEncoder')(observations)
-
-        x = nn.Dense(self.latent_dim)(x)
-        x = nn.LayerNorm()(x)
-        x = nn.tanh(x)
-
-        return DoubleDistributionalCritic(self.hidden_dims, self.n_logits)(x, actions)
-    
-
-class DrQDistributionalSingleCritic(nn.Module):
-    hidden_dims: Sequence[int]
-    n_logits: int
-    cnn_features: Sequence[int] = (32, 32, 32, 32)
-    cnn_strides: Sequence[int] = (2, 1, 1, 1)
-    cnn_padding: str = 'VALID'
-    latent_dim: int = 50
-
-    @nn.compact
-    def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        x = Encoder(self.cnn_features,
-                    self.cnn_strides,
-                    self.cnn_padding,
-                    name='SharedEncoder')(observations)
-
-        x = nn.Dense(self.latent_dim)(x)
-        x = nn.LayerNorm()(x)
-        x = nn.tanh(x)
-
-        return DistributionalCritic(self.hidden_dims, self.n_logits)(x, actions)
 
 
 class DrQPolicy(nn.Module):

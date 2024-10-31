@@ -5,21 +5,24 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     config.algo = 'sac_hlg'
-    config.double_q = False
+    config.double_q = True
 
     config.actor_lr = 3e-4
     config.critic_lr = 3e-4
     config.temp_lr = 3e-4
+    config.adam_eps = 1e-8
 
     config.hidden_dims = (256, 256)
-    config.n_logits = 51
-    config.sigma = 1.5 # following the "Stop Regressing" paper, here we set sigma/bin_width to 0.75
+    config.batch_size = 256
+    config.n_logits = 15
+    config.sigma = 5 # The "Stop Regressing" paper suggests sigma/bin_width to be 0.75, which means (n_logits,sigma)=(101, .75), (51, 1.5),...
 
     config.discount = 0.99
 
     config.tau = 0.005
     config.target_update_period = 1
 
+    config.use_entropy = True
     config.init_temperature = 1.0
     config.target_entropy = None
     config.backup_entropy = True

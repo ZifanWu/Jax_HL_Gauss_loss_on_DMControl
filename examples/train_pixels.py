@@ -7,8 +7,9 @@ from absl import app, flags
 from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 import time
+import socket
 
-from jaxrl.agents import DrQLearner
+from jaxrl.agents import DrQLearner, DrQHLGaussianLearner
 from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
@@ -22,8 +23,8 @@ flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
-flags.DEFINE_integer('batch_size', 512, 'Mini batch size.')
-flags.DEFINE_integer('max_steps', int(5e5), 'Number of environment steps.')
+# flags.DEFINE_integer('batch_size', 512, 'Mini batch size.')
+flags.DEFINE_integer('max_steps', int(5e6), 'Number of environment steps.')
 flags.DEFINE_integer('start_training', int(1e3),
                      'Number of environment steps to start training.')
 flags.DEFINE_integer(
@@ -36,7 +37,7 @@ flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project
 flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's project")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_default.py',
+    'configs/drq_hlg.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -50,10 +51,51 @@ PLANET_ACTION_REPEAT = {
 }
 
 
+from typing import Any, Dict
+from ml_collections import ConfigDict
+
+from absl import flags
+
+def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
+    """
+    Merge absl FLAGS and ml_collections.ConfigDict into a single dictionary.
+    
+    Args:
+        flags_obj: The absl FLAGS object
+        config_dict: The ml_collections.ConfigDict object
+    
+    Returns:
+        Dict containing all configuration parameters
+    """
+    # Convert FLAGS to dictionary with actual values
+    flags_dict = {}
+    # 获取所有 FLAGS 的值
+    for flag_name in dir(flags_obj):
+        # 跳过内部属性和方法
+        if not flag_name.startswith('_'):
+            try:
+                # 获取实际的值而不是 Flag 对象
+                flags_dict[flag_name] = getattr(flags_obj, flag_name)
+            except Exception:
+                continue
+    
+    # Convert ConfigDict to regular dict
+    if isinstance(config_dict, ConfigDict):
+        config_dict = config_dict.to_dict()
+    
+    # Merge the dictionaries
+    # FLAGS values will override ConfigDict values if there are duplicates
+    merged_config = {**config_dict, **flags_dict}
+    
+    return merged_config
+
+
 def main(_):
     kwargs = dict(FLAGS.config)
+    config = merge_configs(FLAGS, FLAGS.config)
+    FLAGS.seed = np.random.randint(0, 100000)
     algo = kwargs.pop('algo')
-    run_name = f"{FLAGS.env_name}__{algo}__{FLAGS.seed}__{int(time.time())}"
+    run_name = f"{FLAGS.seed}"
     if FLAGS.track:
         import wandb
 
@@ -61,7 +103,10 @@ def main(_):
             project=FLAGS.wandb_project_name,
             entity=FLAGS.wandb_entity,
             sync_tensorboard=True,
-            config=FLAGS,
+            notes=socket.gethostname(),
+            dir=FLAGS.save_dir,
+            config=config,
+            job_type="training",
             name=run_name,
             monitor_gym=True,
             save_code=True,
@@ -102,11 +147,16 @@ def main(_):
     np.random.seed(FLAGS.seed)
     random.seed(FLAGS.seed)
 
-    kwargs.pop('algo')
+    algo = kwargs.pop('algo')
     replay_buffer_size = kwargs.pop('replay_buffer_size')
-    agent = DrQLearner(FLAGS.seed,
-                       env.observation_space.sample()[np.newaxis],
-                       env.action_space.sample()[np.newaxis], **kwargs)
+    if algo == 'drq':
+        agent = DrQLearner(FLAGS.seed,
+                        env.observation_space.sample()[np.newaxis],
+                        env.action_space.sample()[np.newaxis], **kwargs)
+    elif algo == 'drq_hlg':
+        agent = DrQHLGaussianLearner(FLAGS.seed,
+                                    env.observation_space.sample()[np.newaxis],
+                                    env.action_space.sample()[np.newaxis], **kwargs)
 
     replay_buffer = ReplayBuffer(
         env.observation_space, env.action_space, replay_buffer_size
@@ -139,7 +189,7 @@ def main(_):
                                           info['total']['timesteps'])
 
         if i >= FLAGS.start_training:
-            batch = replay_buffer.sample(FLAGS.batch_size)
+            batch = replay_buffer.sample(int(config['batch_size']))
             update_info = agent.update(batch)
 
             if i % FLAGS.log_interval == 0:
@@ -157,13 +207,16 @@ def main(_):
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
+            print('env: {}, seed: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, 
+                                                                   info['total']['timesteps'], 
+                                                                   eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                        eval_returns,
                        fmt=['%d', '%.1f'])
 
 
 if __name__ == '__main__':
-    os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.5'
+    # os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.5'
     os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] ='false'
     os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
