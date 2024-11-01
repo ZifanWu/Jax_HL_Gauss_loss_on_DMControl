@@ -1,5 +1,7 @@
 [![DOI](https://zenodo.org/badge/330059679.svg)](https://zenodo.org/badge/latestdoi/330059679)
 
+The finetuned results on 12 difficult DMControl environments are [here](https://wandb.ai/zarzard/dormant-neuron/reports/SAC-HLGauss-on-DMControl--Vmlldzo5OTc3NjI5?accessToken=5k4eu7kia9l4wsdtxqkftbtuke6ib5v1hgl8o5bkunwh6317yv8ne9ffugouhf50).
+
 # JAX (Flax) RL
 
 This repository contains JAX (Flax) implementations of Reinforcement Learning algorithms:
