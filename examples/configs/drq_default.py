@@ -11,6 +11,7 @@ def get_config():
     config.temp_lr = 3e-4
 
     config.hidden_dims = (256, 256)
+    config.batch_size = 512
 
     config.cnn_features = (32, 32, 32, 32)
     config.cnn_strides = (2, 1, 1, 1)

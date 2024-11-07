@@ -9,6 +9,8 @@ def get_config():
 
     config.n_logits = 101
     config.sigma = 0.75
+    config.min_value = 0.
+    config.max_value = 100.
     config.use_entropy = True
 
     config.actor_lr = 3e-4

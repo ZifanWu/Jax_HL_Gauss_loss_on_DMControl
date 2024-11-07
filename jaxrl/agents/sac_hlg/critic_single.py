@@ -30,13 +30,12 @@ def update(transform_to_probs, transform_from_probs, use_entropy,
         q_logits = critic.apply_fn({'params': critic_params}, batch.observations,
                                  batch.actions)
         critic_loss = optax.softmax_cross_entropy(q_logits, target_probs).mean()
-        # q_probs = nn.softmax(q_logits)
+        q_probs = nn.softmax(q_logits)
         # critic_loss = (q1_probs * jnp.log(target_probs)).mean() + (q2_probs * jnp.log(target_probs)).mean()
-        # q = transform_from_probs(q_probs)
+        q = transform_from_probs(q_probs)
         return critic_loss, {
             'critic_loss': critic_loss,
-            # 'q1': q1.mean(),
-            # 'q2': q2.mean()
+            'q1': q.mean(),
         }
 
     new_critic, info = critic.apply_gradient(critic_loss_fn)

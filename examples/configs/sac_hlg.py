@@ -14,8 +14,10 @@ def get_config():
 
     config.hidden_dims = (256, 256)
     config.batch_size = 256
-    config.n_logits = 15
-    config.sigma = 5 # The "Stop Regressing" paper suggests sigma/bin_width to be 0.75, which means (n_logits,sigma)=(101, .75), (51, 1.5),...
+    config.n_logits = 51
+    config.sigma = 1.5 # The "Stop Regressing" paper suggests sigma/bin_width to be 0.75, which means (n_logits,sigma)=(101, .75), (51, 1.5),...
+    config.min_value = 0.
+    config.max_value = 100.
 
     config.discount = 0.99
 
