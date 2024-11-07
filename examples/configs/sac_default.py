@@ -11,6 +11,7 @@ def get_config():
     config.temp_lr = 3e-4
 
     config.hidden_dims = (256, 256)
+    config.batch_size = 256
 
     config.discount = 0.99
 

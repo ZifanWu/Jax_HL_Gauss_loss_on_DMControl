@@ -16,6 +16,7 @@ def get_config():
     config.cnn_strides = (2, 1, 1, 1)
     config.cnn_padding = 'VALID'
     config.latent_dim = 50
+    config.batch_size = 512
 
     config.discount = 0.99
 

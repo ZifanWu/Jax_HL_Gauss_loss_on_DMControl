@@ -61,6 +61,7 @@ class SACLearner(object):
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
                  hidden_dims: Sequence[int] = (256, 256),
+                 batch_size: int = 256,
                  discount: float = 0.99,
                  tau: float = 0.005,
                  target_update_period: int = 1,

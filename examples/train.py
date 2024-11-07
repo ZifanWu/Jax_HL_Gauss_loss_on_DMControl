@@ -10,7 +10,7 @@ from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 
 from jaxrl.agents import (AWACLearner, DDPGLearner, REDQLearner, SACLearner,
-                          SACV1Learner, SACHLGLearner)
+                          SACV1Learner, SACHLGLearner, LogSACLearner)
 from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
@@ -25,11 +25,13 @@ flags.DEFINE_integer('eval_episodes', 10,
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 # flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
+flags.DEFINE_boolean('reset', False, 'Whether to reset periodically')
+flags.DEFINE_integer('reset_interval', 200_000, 'Reset time interval')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
 flags.DEFINE_integer('max_steps', int(1e7), 'Number of training steps.')
 flags.DEFINE_integer('start_training', int(1e4),
                      'Number of training steps to start training.')
-flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
+flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
 flags.DEFINE_boolean('track', False, 'Track experiments with Weights and Biases.')
 flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project name.")
@@ -133,34 +135,41 @@ def main(_):
 
 
     replay_buffer_size = kwargs.pop('replay_buffer_size')
-    if algo == 'sac':
-        agent = SACLearner(FLAGS.seed,
-                           env.observation_space.sample()[np.newaxis],
-                           env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'redq':
-        agent = REDQLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis],
-                            policy_update_delay=FLAGS.updates_per_step,
-                            **kwargs)
-    elif algo == 'sac_v1':
-        agent = SACV1Learner(FLAGS.seed,
-                             env.observation_space.sample()[np.newaxis],
-                             env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'awac':
-        agent = AWACLearner(FLAGS.seed,
+    def create_new_agent():
+        if algo == 'sac':
+            agent = SACLearner(FLAGS.seed,
                             env.observation_space.sample()[np.newaxis],
                             env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'ddpg':
-        agent = DDPGLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'sac_hlg':
-        agent = SACHLGLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
-    else:
-        raise NotImplementedError()
+        elif algo == 'redq':
+            agent = REDQLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis],
+                                policy_update_delay=FLAGS.updates_per_step,
+                                **kwargs)
+        elif algo == 'sac_v1':
+            agent = SACV1Learner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'awac':
+            agent = AWACLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'ddpg':
+            agent = DDPGLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'sac_hlg':
+            agent = SACHLGLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'logsac':
+            agent = LogSACLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        else:
+            raise NotImplementedError()
+        return agent
+    agent = create_new_agent()
 
     replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
                                  replay_buffer_size or FLAGS.max_steps)
@@ -207,7 +216,7 @@ def main(_):
                 summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
-            eval_stats = evaluate(agent, eval_env, FLAGS.eval_episodes)
+            eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes)
 
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v,
@@ -216,10 +225,16 @@ def main(_):
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, step: {}, seed: {}, eval_return: {}'.format(FLAGS.env_name, info['total']['timesteps'], FLAGS.seed, eval_stats['return']))
+            print('env: {}, step: {}, seed: {}, alg: {}, eval_return: {}'.format(FLAGS.env_name, 
+                                                                                 info['total']['timesteps'], 
+                                                                                 FLAGS.seed, config['algo'], eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                        eval_returns,
                        fmt=['%d', '%.1f'])
+            
+        if FLAGS.reset and i % FLAGS.reset_interval == 0:
+            # create a completely new agent
+            agent = create_new_agent()            
 
 
 if __name__ == '__main__':

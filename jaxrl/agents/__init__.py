@@ -7,3 +7,4 @@ from jaxrl.agents.sac.sac_learner import SACLearner
 from jaxrl.agents.sac_v1.sac_v1_learner import SACV1Learner
 from jaxrl.agents.sac_hlg.sac_hlg_learner import SACHLGLearner
 from jaxrl.agents.drq_hlg.drq_hlg_learner import DrQHLGaussianLearner
+from jaxrl.agents.logsac.logsac_learner import LogSACLearner

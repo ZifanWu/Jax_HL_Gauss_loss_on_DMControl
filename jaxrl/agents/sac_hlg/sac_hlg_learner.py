@@ -16,13 +16,14 @@ from jaxrl.networks import critic_net, policies
 from jaxrl.networks.common import InfoDict, Model, PRNGKey
 
 
-MIN_VALUE = 0
-MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
-
+# MIN_VALUE = 0
+# MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
 
 @functools.partial(jax.jit,
-                   static_argnames=('backup_entropy', 'update_target', 'n_logits', 'sigma', 'batch_size', 'double_q', 'use_entropy'))
+                   static_argnames=('backup_entropy', 'update_target', 'n_logits', 'sigma', 'batch_size', 'double_q', 'use_entropy',
+                                    'min_value', 'max_value'))
 def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool, use_entropy: bool,
+                min_value: float, max_value: float,
                 rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
                 temp: Model, batch: Batch, discount: float, tau: float,
                 target_entropy: float, backup_entropy: bool, update_target: bool
@@ -30,12 +31,12 @@ def _update_jit(n_logits: int, sigma: float, batch_size: int, double_q: bool, us
 
     rng, key = jax.random.split(rng)
 
-    support = jnp.linspace(MIN_VALUE, MAX_VALUE, n_logits + 1, dtype=jnp.float32) # logits are centers! (ie, num of classes)
+    support = jnp.linspace(min_value, max_value, n_logits + 1, dtype=jnp.float32) # logits are centers! (ie, num of classes)
     centers = (support[:-1] + support[1:]) / 2
     support = support[None, :].repeat(batch_size, axis=0) # (B, n_logits+1)
     
     def transform_to_probs(target): # (B,)
-        target = jnp.clip(target, MIN_VALUE, MAX_VALUE)
+        target = jnp.clip(target, min_value, max_value)
         cdf_evals = jax.scipy.special.erf((support - target[:, None]) / (jnp.sqrt(2) * sigma)) # (B, n_logits+1)
         z = cdf_evals[:, -1] - cdf_evals[:, 0] # (B,)
         bin_probs = cdf_evals[:, 1:] - cdf_evals[:, :-1] # (B, n_logits)
@@ -96,6 +97,8 @@ class SACHLGLearner(object):
                  double_q: bool = True,
                  use_entropy: bool = True,
                  adam_eps: float = 1e-8,
+                 min_value: float = 0.,
+                 max_value: float = 100.,
                  discount: float = 0.99,
                  tau: float = 0.005,
                  target_update_period: int = 1,
@@ -151,6 +154,8 @@ class SACHLGLearner(object):
         self.batch_size = batch_size
         self.double_q = double_q
         self.use_entropy = use_entropy
+        self.min_value = min_value
+        self.max_value = max_value
 
         self.actor = actor
         self.critic = critic
@@ -176,6 +181,7 @@ class SACHLGLearner(object):
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
             self.n_logits, self.sigma, self.batch_size, self.double_q, self.use_entropy,
+            self.min_value, self.max_value,
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
             self.backup_entropy, self.step % self.target_update_period == 0)

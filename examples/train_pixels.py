@@ -6,7 +6,6 @@ import tqdm
 from absl import app, flags
 from ml_collections import config_flags
 from tensorboardX import SummaryWriter
-import time
 import socket
 
 from jaxrl.agents import DrQLearner, DrQHLGaussianLearner
@@ -24,17 +23,21 @@ flags.DEFINE_integer('eval_episodes', 10,
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 # flags.DEFINE_integer('batch_size', 512, 'Mini batch size.')
+flags.DEFINE_boolean('reset', False, 'Whether to reset periodically')
+flags.DEFINE_integer('reset_interval', 100_000, 'Reset time interval')
+flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
 flags.DEFINE_integer('max_steps', int(5e6), 'Number of environment steps.')
 flags.DEFINE_integer('start_training', int(1e3),
                      'Number of environment steps to start training.')
 flags.DEFINE_integer(
     'action_repeat', None,
     'Action repeat, if None, uses 2 or PlaNet default values.')
-flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
+flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
 flags.DEFINE_boolean('track', False, 'Track experiments with Weights and Biases.')
 flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's project")
+flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
     'configs/drq_hlg.py',
@@ -91,6 +94,12 @@ def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
 
 
 def main(_):
+    settings = []
+    for i in [True, False]:
+        settings.append(i)
+    if FLAGS.index is not None:
+        setting_for_this_idx = settings[int(FLAGS.index)]
+        FLAGS.reset = setting_for_this_idx
     kwargs = dict(FLAGS.config)
     config = merge_configs(FLAGS, FLAGS.config)
     FLAGS.seed = np.random.randint(0, 100000)
@@ -149,14 +158,18 @@ def main(_):
 
     algo = kwargs.pop('algo')
     replay_buffer_size = kwargs.pop('replay_buffer_size')
-    if algo == 'drq':
-        agent = DrQLearner(FLAGS.seed,
-                        env.observation_space.sample()[np.newaxis],
-                        env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'drq_hlg':
-        agent = DrQHLGaussianLearner(FLAGS.seed,
-                                    env.observation_space.sample()[np.newaxis],
-                                    env.action_space.sample()[np.newaxis], **kwargs)
+    def create_new_agent():
+        if algo == 'drq':
+            agent = DrQLearner(FLAGS.seed,
+                            env.observation_space.sample()[np.newaxis],
+                            env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'drq_hlg':
+            agent = DrQHLGaussianLearner(FLAGS.seed,
+                                        env.observation_space.sample()[np.newaxis],
+                                        env.action_space.sample()[np.newaxis], **kwargs)
+        return agent
+    
+    agent = create_new_agent()
 
     replay_buffer = ReplayBuffer(
         env.observation_space, env.action_space, replay_buffer_size
@@ -189,8 +202,11 @@ def main(_):
                                           info['total']['timesteps'])
 
         if i >= FLAGS.start_training:
-            batch = replay_buffer.sample(int(config['batch_size']))
-            update_info = agent.update(batch)
+            # batch = replay_buffer.sample(int(config['batch_size']))
+            # update_info = agent.update(batch)
+            for _ in range(FLAGS.updates_per_step):
+                batch = replay_buffer.sample(int(config['batch_size']))
+                update_info = agent.update(batch)
 
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
@@ -198,7 +214,7 @@ def main(_):
                 summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
-            eval_stats = evaluate(agent, eval_env, FLAGS.eval_episodes)
+            eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes)
 
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v,
@@ -207,12 +223,46 @@ def main(_):
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, seed: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, 
+            print('env: {}, seed: {}, alg: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
                                                                    info['total']['timesteps'], 
                                                                    eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                        eval_returns,
                        fmt=['%d', '%.1f'])
+            
+        if FLAGS.reset and i % FLAGS.reset_interval == 0:
+            # shared enc params: 388416
+            # critic head(s) params: 366232
+            # actor head params: 286882
+            # so we reset roughtly half of the agent (both layer and param wise)
+            
+            # save encoder parameters
+            old_critic_enc = agent.critic.params['SharedEncoder']
+            # target critic has its own copy of encoder
+            old_target_critic_enc = agent.target_critic.params['SharedEncoder']
+            # save encoder optimizer statistics
+            old_critic_enc_opt = agent.critic.opt_state_enc
+            
+            # create new agent: note that the temperature is new as well
+            agent = create_new_agent()
+            
+            # resetting critic: copy encoder parameters and optimizer statistics
+            new_critic_params = agent.critic.params.copy(
+                add_or_replace={'SharedEncoder': old_critic_enc})
+            agent.critic = agent.critic.replace(params=new_critic_params, 
+                                                opt_state_enc=old_critic_enc_opt)
+            
+            # resetting actor: actor in DrQ uses critic's encoder
+            # note we could have copied enc optimizer here but actor does not affect enc
+            new_actor_params = agent.actor.params.copy(
+                add_or_replace={'SharedEncoder': old_critic_enc})
+            agent.actor = agent.actor.replace(params=new_actor_params)
+            
+            # resetting target critic
+            new_target_critic_params = agent.target_critic.params.copy(
+                add_or_replace={'SharedEncoder': old_target_critic_enc})
+            agent.target_critic = agent.target_critic.replace(
+                params=new_target_critic_params)
 
 
 if __name__ == '__main__':
