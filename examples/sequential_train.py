@@ -131,15 +131,15 @@ def main(_):
     replay_buffer_size = kwargs.pop('replay_buffer_size')
     replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
                                     replay_buffer_size or FLAGS.max_steps)
-    def create_new_agent(env, buffer):
+    def create_new_agent(env, buffer, global_step=1):
         if algo == 'sequential_sac':
             agent = SequentialSACLearner(FLAGS.seed, FLAGS.track, buffer,
                             env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
+                            env.action_space.sample()[np.newaxis], global_step, **kwargs)
         elif algo == 'sequential_sac_hlg':
             agent = SequentialSACHLGLearner(FLAGS.seed, FLAGS.track, buffer,
                             env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
+                            env.action_space.sample()[np.newaxis], global_step, **kwargs)
         elif algo == 'sac_v1':
             agent = SACV1Learner(FLAGS.seed,
                                 env.observation_space.sample()[np.newaxis],
@@ -161,12 +161,12 @@ def main(_):
         return agent
     agent = create_new_agent(env, replay_buffer)
 
-    def adapt_input_output_dimensions(env, agent, buffer):
+    def adapt_input_output_dimensions(env, agent, buffer, global_step):
         old_critic = agent.critic.params['reused_critic']
         old_target_critic = agent.target_critic.params['reused_critic']
         old_critic_opt = agent.critic.opt_state_critic
 
-        agent = create_new_agent(env, buffer)
+        agent = create_new_agent(env, buffer, global_step)
 
         # resetting critic: copy encoder parameters and optimizer statistics
         new_critic_params = agent.critic.params.copy(
@@ -204,7 +204,7 @@ def main(_):
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
                                     replay_buffer_size or FLAGS.max_steps)
         
-        agent = adapt_input_output_dimensions(env, agent, replay_buffer)
+        agent = adapt_input_output_dimensions(env, agent, replay_buffer, global_step=e*FLAGS.max_steps+1)
 
         eval_returns = []
         observation, done = env.reset(), False

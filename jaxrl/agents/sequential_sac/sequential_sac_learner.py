@@ -60,6 +60,7 @@ class SequentialSACLearner(object):
                  replay_buffer,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 global_step: int = 1,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -137,7 +138,7 @@ class SequentialSACLearner(object):
         self.replay_buffer = replay_buffer
         self.batch_size_statistics = batch_size_statistics
 
-        self.step = 1
+        self.step = global_step
 
     def sample_actions(self,
                        observations: np.ndarray,

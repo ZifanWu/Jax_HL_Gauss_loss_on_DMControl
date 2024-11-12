@@ -90,6 +90,7 @@ class SequentialSACHLGLearner(object):
                  replay_buffer,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 global_step: int = 1,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -184,7 +185,7 @@ class SequentialSACHLGLearner(object):
         self.temp = temp
         self.rng = rng
 
-        self.step = 1
+        self.step = global_step
 
     def sample_actions(self,
                        observations: np.ndarray,
