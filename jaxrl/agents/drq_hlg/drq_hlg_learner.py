@@ -14,7 +14,7 @@ from jaxrl.agents.sac import temperature
 from jaxrl.agents.sac.critic import target_update
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
 
 
 # MIN_VALUE = 0
@@ -73,7 +73,7 @@ def _update_jit(
                                             temp,
                                             batch,
                                             discount,
-                                            backup_entropy=True)
+                                            soft_critic=True)
     if update_target:
         new_target_critic = target_update(new_critic, target_critic, tau)
     else:
@@ -154,9 +154,13 @@ class DrQHLGaussianLearner(object):
                                                     cnn_strides, cnn_padding, latent_dim)
         # critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
         #                              cnn_padding, latent_dim)
-        critic = Model.create(critic_def,
-                              inputs=[critic_key, observations, actions],
-                              tx=optax.adam(learning_rate=critic_lr))
+        # critic = Model.create(critic_def,
+        #                       inputs=[critic_key, observations, actions],
+        #                       tx=optax.adam(learning_rate=critic_lr))
+        critic = ModelDecoupleOpt.create(critic_def,
+                                         inputs=[critic_key, observations, actions],
+                                         tx=optax.adam(learning_rate=critic_lr),
+                                         tx_enc=optax.adam(learning_rate=critic_lr))
         target_critic = Model.create(
             critic_def, inputs=[critic_key, observations, actions])
 

@@ -28,6 +28,7 @@ def update(transform_to_probs, transform_from_probs, use_entropy,
         target_q -= discount * batch.masks * temp() * next_log_probs
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
+        
         q1_logits, q2_logits = critic.apply({'params': critic_params}, batch.observations,
                                  batch.actions)
         critic_loss = optax.softmax_cross_entropy(q1_logits, target_probs).mean() \

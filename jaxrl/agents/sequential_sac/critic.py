@@ -21,10 +21,10 @@ def update(key: PRNGKey, actor: Model, critic: Model, target_critic: Model,
     dist = actor(batch.next_observations)
     next_actions = dist.sample(seed=key)
     next_log_probs = dist.log_prob(next_actions)
-    next_qs = target_critic(batch.next_observations, next_actions)
-    # print(next_qs.shape) # (2, B)
+    next_qs = target_critic(batch.next_observations, next_actions).squeeze()
+    # print(next_qs.shape) # (2, B, 1)
     # import time
-    # time.sleep(22)
+    # time.sleep(3)
     next_q1, next_q2 = next_qs[0], next_qs[1]
     next_q = jnp.minimum(next_q1, next_q2)
 
@@ -39,7 +39,7 @@ def update(key: PRNGKey, actor: Model, critic: Model, target_critic: Model,
         critic_fn = lambda actions: critic.apply({'params': critic_params}, 
                                                  batch.observations, actions)
         def _critic_fn(actions):
-            qs = critic_fn(actions)
+            qs = critic_fn(actions).squeeze()
             q1, q2 = qs[0], qs[1]
             return 0.5*(q1 + q2).mean(), (q1, q2)
 

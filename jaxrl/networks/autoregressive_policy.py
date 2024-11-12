@@ -142,7 +142,6 @@ class Autoregressive(tfd.Distribution):
         samples = jnp.zeros((n, *self._batch_shape(), self._event_dim),
                             jnp.float32)
 
-        # TODO: Consider rewriting it with nn.scan.
         for i in range(self._event_dim):
             dist = self._distr_fn(samples)
             dim_samples = dist.sample(seed=keys[i])

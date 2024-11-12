@@ -2,7 +2,6 @@ import os
 import random
 import time
 import socket
-import socket
 
 import numpy as np
 import tqdm
@@ -20,24 +19,23 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'HalfCheetah-v2', 'Environment name.')
 flags.DEFINE_string('save_dir', "./scratch/general/nfs1/$USER/", 'Tensorboard logging dir.')
-flags.DEFINE_string('save_dir', "./scratch/general/nfs1/$USER/", 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 # flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
+flags.DEFINE_boolean('reset', False, 'Whether to reset periodically')
+flags.DEFINE_integer('reset_interval', 200_000, 'Reset time interval')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
-flags.DEFINE_integer('max_steps', int(1e7), 'Number of training steps.')
 flags.DEFINE_integer('max_steps', int(1e7), 'Number of training steps.')
 flags.DEFINE_integer('start_training', int(1e4),
                      'Number of training steps to start training.')
-flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
+flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
 flags.DEFINE_boolean('track', False, 'Track experiments with Weights and Biases.')
 flags.DEFINE_string('wandb_project_name', "dormant-neuron", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's project")
-flags.DEFINE_integer('index', None, "slurm array index")
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
@@ -47,12 +45,8 @@ config_flags.DEFINE_config_file(
 
 from typing import Any, Dict
 from ml_collections import ConfigDict
-import sys
 
-from typing import Any, Dict
-from ml_collections import ConfigDict
 from absl import flags
-import sys
 
 def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
     """
@@ -97,18 +91,15 @@ def main(_):
     #     setting_for_this_idx = settings[int(FLAGS.index)]
     #     FLAGS.config['sigma'], FLAGS.config['backup_entropy'], FLAGS.config['n_logits'] = setting_for_this_idx
     FLAGS.seed = np.random.randint(0, 100000)
-    envs = ['acrobot-swingup', 'fish-swim', 'quadruped-run', \
-            'quadruped-walk', 'swimmer-swimmer15', 'swimmer-swimmer6', 'walker-run']
-    if FLAGS.index is not None:
-        FLAGS.env_name = envs[int(FLAGS.index % 9)]
+    # envs = ['cheetah-run']
+    # if FLAGS.index is not None:
+    #     FLAGS.env_name = envs[0]
 
     kwargs = dict(FLAGS.config)
     config = merge_configs(FLAGS, FLAGS.config)
 
-    config = merge_configs(FLAGS, FLAGS.config)
-
     algo = kwargs.pop('algo')
-    run_name = f"{FLAGS.seed}__{int(time.time())}"
+    run_name = f"{FLAGS.seed}"
     if FLAGS.track:
         import wandb
 
@@ -116,10 +107,6 @@ def main(_):
             project=FLAGS.wandb_project_name,
             entity=FLAGS.wandb_entity,
             sync_tensorboard=True,
-            notes=socket.gethostname(),
-            dir=FLAGS.save_dir,
-            config=config,
-            job_type="training",
             notes=socket.gethostname(),
             dir=FLAGS.save_dir,
             config=config,
@@ -142,40 +129,49 @@ def main(_):
 
     env = make_env(FLAGS.env_name, FLAGS.seed, video_train_folder)
     eval_env = make_env(FLAGS.env_name, FLAGS.seed + 42, video_eval_folder)
+    if algo == 'sac_hlg':
+        if FLAGS.env_name == 'cheetah-run':
+            kwargs['max_value'] = 1000.
+            print('Adjusting Vmax to 1000 for cheetah-run.')
+        else:
+            kwargs['max_value'] = 100.
+            print('Setting Vmax to 100.')
 
     np.random.seed(FLAGS.seed)
     random.seed(FLAGS.seed)
 
-
     replay_buffer_size = kwargs.pop('replay_buffer_size')
-    if algo == 'sac':
-        agent = SACLearner(FLAGS.seed,
-                           env.observation_space.sample()[np.newaxis],
-                           env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'redq':
-        agent = REDQLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis],
-                            policy_update_delay=FLAGS.updates_per_step,
-                            **kwargs)
-    elif algo == 'sac_v1':
-        agent = SACV1Learner(FLAGS.seed,
-                             env.observation_space.sample()[np.newaxis],
-                             env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'awac':
-        agent = AWACLearner(FLAGS.seed,
+    def create_new_agent():
+        if algo == 'sac':
+            agent = SACLearner(FLAGS.seed,
                             env.observation_space.sample()[np.newaxis],
                             env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'ddpg':
-        agent = DDPGLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
-    elif algo == 'sac_hlg':
-        agent = SACHLGLearner(FLAGS.seed,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
-    else:
-        raise NotImplementedError()
+        elif algo == 'redq':
+            agent = REDQLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis],
+                                policy_update_delay=FLAGS.updates_per_step,
+                                **kwargs)
+        elif algo == 'sac_v1':
+            agent = SACV1Learner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'awac':
+            agent = AWACLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'ddpg':
+            agent = DDPGLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        elif algo == 'sac_hlg':
+            agent = SACHLGLearner(FLAGS.seed,
+                                env.observation_space.sample()[np.newaxis],
+                                env.action_space.sample()[np.newaxis], **kwargs)
+        else:
+            raise NotImplementedError()
+        return agent
+    agent = create_new_agent()
 
     replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
                                  replay_buffer_size or FLAGS.max_steps)
@@ -222,7 +218,7 @@ def main(_):
                 summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
-            eval_stats = evaluate(agent, eval_env, FLAGS.eval_episodes)
+            eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes)
 
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v,
@@ -231,11 +227,16 @@ def main(_):
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, step: {}, seed: {}, eval_return: {}'.format(FLAGS.env_name, info['total']['timesteps'], FLAGS.seed, eval_stats['return']))
-            print('env: {}, step: {}, seed: {}, eval_return: {}'.format(FLAGS.env_name, info['total']['timesteps'], FLAGS.seed, eval_stats['return']))
+            print('env: {}, step: {}, seed: {}, alg: {}, eval_return: {}'.format(FLAGS.env_name, 
+                                                                                 info['total']['timesteps'], 
+                                                                                 FLAGS.seed, config['algo'], eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                        eval_returns,
                        fmt=['%d', '%.1f'])
+            
+        if FLAGS.reset and i % FLAGS.reset_interval == 0:
+            # create a completely new agent
+            agent = create_new_agent()            
 
 
 if __name__ == '__main__':

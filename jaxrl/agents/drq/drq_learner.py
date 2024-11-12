@@ -3,6 +3,7 @@
 import functools
 from typing import Optional, Sequence, Tuple
 
+from optax._src import base
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -16,7 +17,7 @@ from jaxrl.agents.sac.critic import target_update
 from jaxrl.agents.sac.critic import update as update_critic
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
 
 
 @functools.partial(jax.jit, static_argnames=('update_target'))
@@ -42,7 +43,7 @@ def _update_jit(
                                             temp,
                                             batch,
                                             discount,
-                                            backup_entropy=True)
+                                            soft_critic=True)
     if update_target:
         new_target_critic = target_update(new_critic, target_critic, tau)
     else:
@@ -75,6 +76,7 @@ class DrQLearner(object):
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
                  hidden_dims: Sequence[int] = (256, 256),
+                 batch_size: int = 512,
                  cnn_features: Sequence[int] = (32, 32, 32, 32),
                  cnn_strides: Sequence[int] = (2, 1, 1, 1),
                  cnn_padding: str = 'VALID',
@@ -107,9 +109,13 @@ class DrQLearner(object):
 
         critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
                                      cnn_padding, latent_dim)
-        critic = Model.create(critic_def,
-                              inputs=[critic_key, observations, actions],
-                              tx=optax.adam(learning_rate=critic_lr))
+        # critic = Model.create(critic_def,
+        #                       inputs=[critic_key, observations, actions],
+        #                       tx=optax.adam(learning_rate=critic_lr))
+        critic = ModelDecoupleOpt.create(critic_def,
+                                         inputs=[critic_key, observations, actions],
+                                         tx=optax.adam(learning_rate=critic_lr),
+                                         tx_enc=optax.adam(learning_rate=critic_lr))
         target_critic = Model.create(
             critic_def, inputs=[critic_key, observations, actions])
 
