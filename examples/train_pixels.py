@@ -8,8 +8,8 @@ from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 import socket
 
-from jaxrl.agents import DrQLearner, DrQHLGaussianLearner
-from jaxrl.datasets import ReplayBuffer
+from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner
+from jaxrl.datasets import ReplayBuffer, NStepReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
 
@@ -24,10 +24,14 @@ flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 # flags.DEFINE_integer('batch_size', 512, 'Mini batch size.')
 flags.DEFINE_boolean('reset', False, 'Whether to reset periodically')
+flags.DEFINE_boolean('redo', False, 'Whether to redo dormant neurons periodically.')
+flags.DEFINE_integer('reset_start_layer_idx', -4, 'Which layers to reset(redo).')
 flags.DEFINE_integer('reset_interval', 100_000, 'Reset time interval')
+flags.DEFINE_boolean('use_batched_random_crop', False, 'Whether to use DrQ-v1 img augmentation.')
+
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
-flags.DEFINE_integer('max_steps', int(5e6), 'Number of environment steps.')
-flags.DEFINE_integer('start_training', int(1e3),
+flags.DEFINE_integer('max_steps', int(1e7), 'Number of environment steps.')
+flags.DEFINE_integer('start_training', int(1e4),
                      'Number of environment steps to start training.')
 flags.DEFINE_integer(
     'action_repeat', None,
@@ -40,14 +44,14 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_hlg.py',
+    'configs/drq_v2.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
 PLANET_ACTION_REPEAT = {
     'cartpole-swingup': 8,
     'reacher-easy': 4,
-    'cheetah-run': 4,
+    # 'cheetah-run': 4,
     'finger-spin': 2,
     'ball_in_cup-catch': 4,
     'walker-walk': 2
@@ -57,7 +61,6 @@ PLANET_ACTION_REPEAT = {
 from typing import Any, Dict
 from ml_collections import ConfigDict
 
-from absl import flags
 
 def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
     """
@@ -95,12 +98,16 @@ def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
 
 def main(_):
     settings = []
-    for i in [True, False]:
+    for i in [100000, 200000]:
         settings.append(i)
+    # if FLAGS.index is not None:
+    #     setting_for_this_idx = settings[int(FLAGS.index)]
+    #     FLAGS.reset = setting_for_this_idx
+    kwargs = dict(FLAGS.config)
     if FLAGS.index is not None:
         setting_for_this_idx = settings[int(FLAGS.index)]
-        FLAGS.reset = setting_for_this_idx
-    kwargs = dict(FLAGS.config)
+        FLAGS.config['replay_buffer_size'] = setting_for_this_idx
+
     config = merge_configs(FLAGS, FLAGS.config)
     FLAGS.seed = np.random.randint(0, 100000)
     algo = kwargs.pop('algo')
@@ -158,24 +165,34 @@ def main(_):
 
     algo = kwargs.pop('algo')
     replay_buffer_size = kwargs.pop('replay_buffer_size')
-    def create_new_agent():
+    n_step_trgt = kwargs.pop('n_step_trgt')
+    def create_new_agent(env, buffer):
         if algo == 'drq':
-            agent = DrQLearner(FLAGS.seed,
+            agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo,
                             env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], **kwargs)
+                            env.action_space.sample()[np.newaxis], FLAGS.reset_interval, **kwargs)
+        elif algo == 'drq_v2':
+            agent = DrQv2Learner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo, FLAGS.use_batched_random_crop,
+                            env.observation_space.sample()[np.newaxis],
+                            env.action_space.sample()[np.newaxis], FLAGS.reset_interval, **kwargs)
         elif algo == 'drq_hlg':
-            agent = DrQHLGaussianLearner(FLAGS.seed,
+            agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo,
                                         env.observation_space.sample()[np.newaxis],
                                         env.action_space.sample()[np.newaxis], **kwargs)
         return agent
-    
-    agent = create_new_agent()
 
-    replay_buffer = ReplayBuffer(
-        env.observation_space, env.action_space, replay_buffer_size
-        or FLAGS.max_steps // action_repeat)
+    if n_step_trgt > 1:
+        replay_buffer = NStepReplayBuffer(
+            env.observation_space, env.action_space, replay_buffer_size
+            or FLAGS.max_steps // action_repeat, kwargs['discount'], n_step_trgt)
+    else:
+        replay_buffer = ReplayBuffer(
+            env.observation_space, env.action_space, replay_buffer_size
+            or FLAGS.max_steps // action_repeat)
+    agent = create_new_agent(env, replay_buffer)
 
     eval_returns = []
+    global_step = 1
     observation, done = env.reset(), False
     for i in tqdm.tqdm(range(1, FLAGS.max_steps // action_repeat + 1),
                        smoothing=0.1,
@@ -183,8 +200,9 @@ def main(_):
         if i < FLAGS.start_training:
             action = env.action_space.sample()
         else:
-            action = agent.sample_actions(observation)
+            action = agent.sample_actions(observation, step=global_step)
         next_observation, reward, done, info = env.step(action)
+        global_step += 1
 
         if not done or 'TimeLimit.truncated' in info:
             mask = 1.0
@@ -206,7 +224,7 @@ def main(_):
             # update_info = agent.update(batch)
             for _ in range(FLAGS.updates_per_step):
                 batch = replay_buffer.sample(int(config['batch_size']))
-                update_info = agent.update(batch)
+                update_info = agent.update(batch, step=global_step)
 
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
@@ -214,7 +232,7 @@ def main(_):
                 summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
-            eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes)
+            eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes, global_step)
 
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v,
@@ -230,7 +248,7 @@ def main(_):
                        eval_returns,
                        fmt=['%d', '%.1f'])
             
-        if FLAGS.reset and i % FLAGS.reset_interval == 0:
+        if FLAGS.reset and i % FLAGS.reset_interval == 0: # TODO Modify this!
             # shared enc params: 388416
             # critic head(s) params: 366232
             # actor head params: 286882
@@ -244,7 +262,7 @@ def main(_):
             old_critic_enc_opt = agent.critic.opt_state_enc
             
             # create new agent: note that the temperature is new as well
-            agent = create_new_agent()
+            agent = create_new_agent(env, replay_buffer)
             
             # resetting critic: copy encoder parameters and optimizer statistics
             new_critic_params = agent.critic.params.copy(
