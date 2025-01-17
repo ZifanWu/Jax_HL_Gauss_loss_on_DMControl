@@ -185,15 +185,16 @@ def _get_norm_per_neuron(param, axes):
   return jnp.sqrt(jnp.sum(jnp.power(param, 2), axis=axes))
 
 
-@functools.partial(jax.jit, static_argnames=('K', 'M'))
-def top_K_and_least_KM_elements(arr: jnp.ndarray, K: int, M: int):
+# @functools.partial(jax.jit, static_argnames=('K'))
+def topK_and_leastKM_elements(arr: jnp.ndarray, K: int):
   # Sort the array in descending order and take the first 3 elements
   indices = jnp.argsort(arr)[::-1]
-  top_k_indices = indices[:K]
-  top_k_values = arr[top_k_indices]
-  least_km_indices = indices[-K * M:]
-  least_km_values = arr[least_km_indices]
-  return top_k_values, top_k_indices, least_km_values, least_km_indices
+  top_K_indices = indices[:K]
+  top_K_values = arr[top_K_indices]
+  M = int(top_K_values[-1])
+  least_KM_indices = indices[-K * M:]
+  least_KM_values = arr[least_KM_indices]
+  return top_K_values, top_K_indices, least_KM_indices, least_KM_indices, M
 
 
 @jax.jit
@@ -419,7 +420,7 @@ class BaseRecycler:
           thres_idx += 1
         # log top activations
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
-          top3_values, top3_indices, _, _ = top_K_and_least_KM_elements(activation, 3, 1)
+          top3_values, top3_indices, _, _, M = topK_and_leastKM_elements(activation, 3, 1)
           dense_top3_indices.append(top3_indices)
           wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0], 'grad_step': update_step})
           wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1], 'grad_step': update_step})
@@ -535,7 +536,7 @@ class NeuronRecycler(BaseRecycler):
     self.neutralize_dormant_neurons = neutralize_dormant_neurons
     self.dead_thres, self.mass_thres = dead_thres, mass_thres
     self.weight_revive_eps = weight_revive_eps
-    self.K, self.M = K, M
+    self.K = K
     self.track = track
     # prepare a dict that has pointer to next layer give a layer name
     # this is needed because neuron recycle reinitalizes both sides
@@ -954,7 +955,7 @@ class NeuronRecycler(BaseRecycler):
 
       activation = activations_dict[k + '_act/__call__'][0]
       score = self.estimate_neuron_score(activation)
-      top_K_values, _, _, least_KM_indices = top_K_and_least_KM_elements(score, self.K, self.M)
+      top_K_values, _, _, least_KM_indices, M = topK_and_leastKM_elements(score, self.K)
       
       dead_neuron_mask = jnp.zeros_like(score)
       dead_neuron_mask = dead_neuron_mask.at[least_KM_indices].set(1)
@@ -979,10 +980,10 @@ class NeuronRecycler(BaseRecycler):
 
         # reset incoming weights of dead neurons
         weight_revive_fn = jax.jit(
-            functools.partial(weight_revive, K=K, M=self.M, eps=self.weight_revive_eps, k=mass_thres)
+            functools.partial(weight_revive, K=K, M=M, eps=self.weight_revive_eps, k=mass_thres)
         )
         key, subkey = random.split(key)
-        revive_indices = jax.random.choice(subkey, least_KM_indices, shape=(self.M,), replace=False)
+        revive_indices = jax.random.choice(subkey, least_KM_indices, shape=(M,), replace=False)
         least_KM_indices = jnp.array([i for i in least_KM_indices if i not in revive_indices])
         dead_neuron_mask = jnp.zeros_like(score)
         # dead_neuron_mask[revive_indices] = 1
