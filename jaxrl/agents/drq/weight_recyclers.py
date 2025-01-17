@@ -420,7 +420,7 @@ class BaseRecycler:
           thres_idx += 1
         # log top activations
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
-          top3_values, top3_indices, _, _, M = topK_and_leastKM_elements(activation, 3, 1)
+          top3_values, top3_indices, _, _, M = topK_and_leastKM_elements(activation, 3)
           dense_top3_indices.append(top3_indices)
           wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0], 'grad_step': update_step})
           wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1], 'grad_step': update_step})
