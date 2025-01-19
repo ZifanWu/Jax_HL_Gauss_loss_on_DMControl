@@ -61,9 +61,6 @@ def weight_revive(param, next_param, dead_neuron_mask, key,
   '''
   new_incoming_param = (param * mass_incoming_mask) / k
   new_outgoing_param = next_param * mass_outgoing_mask
-  # for m in range(M):
-  #   idx = revive_indices[m]
-  #   # dead_thres = least_KM_values[K * M + m] # they may be all 0
   dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
       dead_neuron_mask, param, next_param
   )
@@ -185,16 +182,25 @@ def _get_norm_per_neuron(param, axes):
   return jnp.sqrt(jnp.sum(jnp.power(param, 2), axis=axes))
 
 
-# @functools.partial(jax.jit, static_argnames=('K'))
+@jax.jit
+def compute_quantiles(arr: jnp.ndarray, q):
+  return jnp.quantile(arr, q)
+
+
+@jax.jit
+def sort_array(arr: jnp.ndarray):
+  # Sort the array in descending order and return the indices
+  return jnp.argsort(arr)[::-1]
+
+
 def topK_and_leastKM_elements(arr: jnp.ndarray, K: int):
-  # Sort the array in descending order and take the first 3 elements
-  indices = jnp.argsort(arr)[::-1]
+  indices = sort_array(arr)
   top_K_indices = indices[:K]
   top_K_values = arr[top_K_indices]
-  M = int(top_K_values[-1])
+  M = top_K_values[-1].astype(int)
   least_KM_indices = indices[-K * M:]
   least_KM_values = arr[least_KM_indices]
-  return top_K_values, top_K_indices, least_KM_indices, least_KM_indices, M
+  return top_K_values, top_K_indices, least_KM_values, least_KM_indices, M
 
 
 @jax.jit
@@ -364,8 +370,9 @@ class BaseRecycler:
           # so we check if quantiles matches the theoretical quantiles of the Gaussian with that mean and that std
           cdf_diff = check_normality(preactivation)
           wandb.log({'{}_cdf_difference'.format(layer_name): cdf_diff, 'grad_step': update_step})
-          q = jnp.array([0.25, 0.5, 0.75])
-          quantiles = jnp.quantile(jnp.mean(preactivation, axis=0), q) # (q.shape)
+          # q = jnp.array([0.25, 0.5, 0.75])
+          # quantiles = jnp.quantile(jnp.mean(preactivation, axis=0), q) # (q.shape)
+          quantiles = compute_quantiles(jnp.mean(preactivation, axis=0), jnp.array([0.25, 0.5, 0.75]))
           wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0], 'grad_step': update_step})
           wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1], 'grad_step': update_step})
           wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2], 'grad_step': update_step})
@@ -442,8 +449,7 @@ class BaseRecycler:
             bias_key = k + '/bias'
             abs_param = jnp.abs(param_dict[param_key]) # (8, 8, 4, 32)(4, 4, 32, 64)(3, 3, 64, 64)(7744, 512)(512, 6)
             wandb.log({'{}_w_mean'.format(k): abs_param.mean(), 'grad_step': update_step})
-            q = jnp.array([0.25, 0.5, 0.75]) # quantiles
-            quantiles = jnp.quantile(abs_param, q)
+            quantiles = compute_quantiles(abs_param, jnp.array([0.25, 0.5, 0.75]))
             wandb.log({'{}_w_1qt'.format(k): quantiles[0], 'grad_step': update_step})
             wandb.log({'{}_w_2qt'.format(k): quantiles[1], 'grad_step': update_step})
             wandb.log({'{}_w_3qt'.format(k): quantiles[2], 'grad_step': update_step})
@@ -456,7 +462,7 @@ class BaseRecycler:
             
             abs_bias = jnp.abs(param_dict[bias_key])
             wandb.log({'{}_b_mean'.format(k): abs_bias.mean(), 'grad_step': update_step})
-            quantiles = jnp.quantile(abs_bias, q)
+            quantiles = compute_quantiles(abs_bias, jnp.array([0.25, 0.5, 0.75]))
             wandb.log({'{}_b_1qt'.format(k): quantiles[0], 'grad_step': update_step})
             wandb.log({'{}_b_2qt'.format(k): quantiles[1], 'grad_step': update_step})
             wandb.log({'{}_b_3qt'.format(k): quantiles[2], 'grad_step': update_step})
@@ -534,7 +540,7 @@ class NeuronRecycler(BaseRecycler):
     self.outgoing_scale = outgoing_scale
     self.prune_dormant_neurons = prune_dormant_neurons
     self.neutralize_dormant_neurons = neutralize_dormant_neurons
-    self.dead_thres, self.mass_thres = dead_thres, mass_thres
+    self.dead_thres = dead_thres
     self.weight_revive_eps = weight_revive_eps
     self.K = K
     self.track = track
@@ -939,12 +945,6 @@ class NeuronRecycler(BaseRecycler):
         k: jnp.zeros_like(p) if p.ndim != 1 else None
         for k, p in param_dict.items()
     }
-    ingoing_random_keys_dict = {k: None for k in param_dict} # TODO (ZW) maybe we need to use different keys for dead and mass neurons
-    outgoing_random_keys_dict = (
-        {k: None for k in param_dict}
-        if self.init_method_outgoing == 'random'
-        else {}
-    )
     # prepare mask of incoming and outgoing recycled connections
     for k in self.reset_layers:      
       param_key = k + '/kernel' # NOTE needs to be specified for each algo (if using different network architectures)
@@ -1003,7 +1003,7 @@ class NeuronRecycler(BaseRecycler):
         # reset bias
         bias_key = k + '/bias'
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
-        new_bias = mass_bias / self.mass_thres
+        new_bias = mass_bias / mass_thres
         param_dict[bias_key] = jnp.where(
             dead_neuron_mask, new_bias, param_dict[bias_key]
         )
