@@ -950,7 +950,7 @@ class NeuronRecycler(BaseRecycler):
 
       activation = activations_dict[k + '_act/__call__'][0]
       score = self.estimate_neuron_score(activation)
-      top_K_values, _, _, indices = topK_and_leastKM_elements(score, self.K)
+      top_K_values, _, indices = topK_and_leastKM_elements(score, self.K)
       M = top_K_values[-1].astype(int)
 
       if M < max(2, self.ntrlize_thres):
