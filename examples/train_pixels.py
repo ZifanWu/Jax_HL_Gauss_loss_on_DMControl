@@ -113,11 +113,12 @@ def main(_):
         #           ('hopper-hop', (2048, 2048), 0.01, 100, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 200, 1, 4),
         #           ('hopper-hop', (2048, 2048), 0.01, 400, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 100, 1, 2)
         #           ]:
-        for i in ['acrobot-swingup', 'cartpole-swingup_sparse', 'quadruped-walk', 'quadruped-run', 'finger-turn_hard']:
+        for i in ['acrobot-swingup', 'quadruped-walk', 'quadruped-run', 'finger-turn_hard']:
             for j in [True]:
-                for k in [1000, 3000, 10000]: # TODO test RR scaling
-                    for l in [1, 5, 10]:
-                        for m in [0]:
+                for k in [1000]: # TODO test RR scaling
+                    for l in [1, 3, 10]:
+                        for m in [0.01, 0.003]:
+                            for n in [True, False]:
                     # for l in [0.025, 0]:
             # for k in [2, 4, 8]:
                 # for k in [1e-4, 1e-3, 1e-2]:
@@ -128,10 +129,11 @@ def main(_):
                 # for l in [True, False]:
             # for k in ['linear(1.0,0.1,500000)', 'linear(0.2,0.2,500000)']:
             # settings.append(i)
-                            settings.append([i,j,j,k,l,m])
+                                settings.append([i,j,j,k,l,m,n])
         setting_for_this_idx = settings[int(FLAGS.index)]
         FLAGS.env_name, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons, \
-        FLAGS.reset_interval, FLAGS.config['K'], FLAGS.config['weight_revive_eps'] = setting_for_this_idx
+        FLAGS.reset_interval, FLAGS.config['K'], FLAGS.config['weight_revive_eps'],\
+        FLAGS.config['NO_K_mass_thres'] = setting_for_this_idx
         # FLAGS.env_name, FLAGS.config['critic_hidden_dims'],\
         # FLAGS.config['WD_rate'], FLAGS.config['n_logits'], FLAGS.config['n_step_trgt'],\
         # FLAGS.updates_per_step = setting_for_this_idx
@@ -263,7 +265,7 @@ def main(_):
             for k, v in info['episode'].items():
                 summary_writer.add_scalar(f'training/{k}', v,
                                           info['total']['timesteps'])
-                wandb.log({f'training/{k}': v, 'global_step': info['total']['timesteps']})
+                wandb.log({f'training/{k}': v, 'global_step': i})
 
         if i >= FLAGS.start_training:
             # batch = replay_buffer.sample(int(config['batch_size']))
@@ -285,7 +287,7 @@ def main(_):
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v,
                                           info['total']['timesteps'])
-                wandb.log({f'evaluation/average_{k}s': v, 'global_step':  info['total']['timesteps']})
+                wandb.log({f'evaluation/average_{k}s': v, 'global_step':  i})
             summary_writer.flush()
 
             eval_returns.append(
