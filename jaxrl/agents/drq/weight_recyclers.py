@@ -956,7 +956,7 @@ class NeuronRecycler(BaseRecycler):
       if M < max(2, self.ntrlize_thres):
         continue
       else:
-        n_death = score <= self.dead_thres
+        n_death = jnp.count_nonzero(score <= self.dead_thres)
         if n_death >= self.K * (M-1):
           least_KM_indices = indices[-self.K * (M-1):]
         else: # when the number of dead neurons are not sufficient
