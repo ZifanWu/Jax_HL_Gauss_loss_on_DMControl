@@ -82,10 +82,11 @@ class DrQLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 ntrlize_thres: float = 2.,
+                 NO_K_mass_thres: bool = True,
                  weight_scaling: bool = False,
                  incoming_scale: float = 10.0,
                  K: int = 5,
-                 M: int = 10,
                  mass_thres: float = 10.,
                  dead_thres: float = 0.1,
                  weight_revive_eps: float = 0.01,
@@ -186,8 +187,10 @@ class DrQLearner(object):
                                                                         neutralize_dormant_neurons=neutralize_dormant_neurons,
                                                                         dead_thres=dead_thres, mass_thres=mass_thres,
                                                                         weight_revive_eps=weight_revive_eps,
-                                                                        K=K, M=M,
-                                                                        reset_start_step=reset_start_step)
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres)
             self.critic2_weight_recycler = weight_recyclers.NeuronRecycler(critic2_layer_list, 
                                                                         track=track, 
                                                                         reset_period=reset_interval,
@@ -196,8 +199,10 @@ class DrQLearner(object):
                                                                         neutralize_dormant_neurons=neutralize_dormant_neurons,
                                                                         dead_thres=dead_thres, mass_thres=mass_thres,
                                                                         weight_revive_eps=weight_revive_eps,
-                                                                        K=K, M=M,
-                                                                        reset_start_step=reset_start_step)
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres)
         else:
             self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
                                                                         track=track, 

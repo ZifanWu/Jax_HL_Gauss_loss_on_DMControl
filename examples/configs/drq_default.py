@@ -6,13 +6,15 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.ntrlize_thres = 2.
+    config.NO_K_mass_thres = False
+    
     config.weight_scaling = False
     config.incoming_scale = 1.0
     
     config.mass_thres = 10.
     config.dead_thres = 0.1
     config.K = 5
-    config.M = 10
     config.weight_revive_eps = 0.01
 
     config.n_step_trgt = 1
