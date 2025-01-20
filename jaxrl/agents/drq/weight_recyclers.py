@@ -979,6 +979,7 @@ class NeuronRecycler(BaseRecycler):
           mass_thres = top_K_values[K].astype(int)
         mass_neuron_mask = jnp.zeros_like(score)
         mass_neuron_mask = mass_neuron_mask.at[indices[K]].set(1)
+        mass_neuron_mask = mass_neuron_mask != 0
         mass_incoming_mask, mass_outgoing_mask = self.create_mask_helper(
             mass_neuron_mask, param, next_param
         )
@@ -997,7 +998,7 @@ class NeuronRecycler(BaseRecycler):
         least_KM_indices = jnp.array([i for i in least_KM_indices if i not in revive_indices])
         dead_neuron_mask = jnp.zeros_like(score)
         dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
-        # dead_neuron_mask = dead_neuron_mask != 0
+        dead_neuron_mask = dead_neuron_mask != 0
         param, next_param, key = weight_revive_fn(
             param, next_param, dead_neuron_mask, key, mass_incoming_mask, mass_outgoing_mask
         )
