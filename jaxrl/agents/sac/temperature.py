@@ -19,12 +19,12 @@ class Temperature(nn.Module):
 
 def update(temp: Model, entropy: float,
            target_entropy: float) -> Tuple[Model, InfoDict]:
-
     def temperature_loss_fn(temp_params):
-        temperature = temp.apply_fn({'params': temp_params})
+        temperature = temp.apply({'params': temp_params})
         temp_loss = temperature * (entropy - target_entropy).mean()
         return temp_loss, {'temperature': temperature, 'temp_loss': temp_loss}
 
     new_temp, info = temp.apply_gradient(temperature_loss_fn)
+    info.pop('grad_norm')
 
     return new_temp, info

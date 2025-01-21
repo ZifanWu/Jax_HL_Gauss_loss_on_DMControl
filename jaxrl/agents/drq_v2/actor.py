@@ -27,12 +27,15 @@ from jaxrl.networks.common import InfoDict, Model, Params, PRNGKey, tree_norm
 #     return new_actor, info
 
 def update(key: PRNGKey, stddev: float, encoder: Model, stddev_clip: float, actor: Model, critic: Model, 
-           batch: Batch) -> Tuple[Model, InfoDict]:
+           batch: Batch, msepolicy: bool = False) -> Tuple[Model, InfoDict]:
     def actor_loss_fn(actor_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
         # encodings = encoder.apply({'params': encoder_params}, batch.observations)
         encodings = encoder(batch.observations)
-        dist = actor.apply({'params': actor_params}, encodings, stddev)
-        actions = dist.sample(seed=key, clip=stddev_clip)
+        if msepolicy:
+            actions = actor.apply({'params': actor_params}, encodings, stddev)
+        else:
+            dist = actor.apply({'params': actor_params}, encodings, stddev=stddev)
+            actions = dist.sample(seed=key, clip=stddev_clip)
         # actions = dist.sample(seed=key)
         q1, q2 = critic(encodings, actions)
         q = jnp.minimum(q1, q2)

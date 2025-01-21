@@ -8,32 +8,33 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-from jaxrl.agents.sac import temperature
-from jaxrl.agents.sac.actor import update as update_actor
-from jaxrl.agents.sac.critic import target_update
-from jaxrl.agents.logsac.critic import update as update_critic
+from jaxrl.agents.sac_noisy_critictarget import temperature
+from jaxrl.agents.sac_noisy_critictarget.actor import update as update_actor
+from jaxrl.agents.sac_noisy_critictarget.critic import target_update
+from jaxrl.agents.sac_noisy_critictarget.critic import update as update_critic
 from jaxrl.datasets import Batch
 from jaxrl.networks import critic_net, policies
 from jaxrl.networks.common import InfoDict, Model, PRNGKey
 
 
 @functools.partial(jax.jit,
-                   static_argnames=('backup_entropy', 'update_target'))
+                   static_argnames=('soft_critic', 'update_target'))
 def _update_jit(
-    rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
+    sigma: float, rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
     temp: Model, batch: Batch, discount: float, tau: float,
-    target_entropy: float, backup_entropy: bool, update_target: bool
+    target_entropy: float, soft_critic: bool, update_target: bool
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
 
     rng, key = jax.random.split(rng)
-    new_critic, critic_info = update_critic(key,
+    new_critic, critic_info = update_critic(sigma,
+                                            key,
                                             actor,
                                             critic,
                                             target_critic,
                                             temp,
                                             batch,
                                             discount,
-                                            backup_entropy=backup_entropy)
+                                            soft_critic=True)
     if update_target:
         new_target_critic = target_update(new_critic, target_critic, tau)
     else:
@@ -51,12 +52,14 @@ def _update_jit(
     }
 
 
-class LogSACLearner(object):
+class SACNoisyCriticLearner(object):
 
     def __init__(self,
                  seed: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 sigma: float,
+                 n_logits: int,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -98,7 +101,7 @@ class LogSACLearner(object):
                              inputs=[actor_key, observations],
                              tx=optax.adam(learning_rate=actor_lr))
 
-        critic_def = critic_net.DoubleCritic(hidden_dims)
+        critic_def = critic_net.DoubleDistributionalCritic(hidden_dims, n_logits)
         critic = Model.create(critic_def,
                               inputs=[critic_key, observations, actions],
                               tx=optax.adam(learning_rate=critic_lr))
@@ -114,6 +117,7 @@ class LogSACLearner(object):
         self.target_critic = target_critic
         self.temp = temp
         self.rng = rng
+        self.sigma = sigma
 
         self.step = 1
 
@@ -132,7 +136,7 @@ class LogSACLearner(object):
         self.step += 1
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
-            self.rng, self.actor, self.critic, self.target_critic, self.temp,
+            self.sigma, self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
             self.backup_entropy, self.step % self.target_update_period == 0)
 

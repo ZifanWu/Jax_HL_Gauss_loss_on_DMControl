@@ -164,7 +164,7 @@ class BaseRecycler:
       self, update_step, intermediates, params, key, opt_state
   ):
     self._last_update_step = update_step
-    if self.is_reset(update_step):
+    if True: #self.is_reset(update_step): # TODO debug
       new_params, new_opt_state = self.update_weights(
           intermediates, params, key, opt_state
       )
@@ -183,7 +183,7 @@ class BaseRecycler:
     return step % self.dormancy_logging_period == 0
 
   def maybe_log_deadneurons(self, update_step, intermediates):
-    is_logging = self.is_logging_step(update_step)
+    is_logging = self.is_logging_step(update_step) # TODO debugging
     if is_logging:
       self.log_historical_dead_neuron_overlapping(intermediates, update_step)
   
@@ -230,7 +230,7 @@ class BaseRecycler:
           self.dormant_times[k] = jnp.zeros_like(prev_mask).astype(float)
           # self.degree_of_dormancy[k] = jnp.zeros_like(curr_mask).astype(float)
         self.dormant_times[k] += curr_mask.astype(float)
-        # (ZW) what if we reset a neuron only if its degree_of_dormancy has reached a threshold
+        # TODO (ZW) what if we reset a neuron only if its degree_of_dormancy has reached a threshold
         degree_of_dormancy = self.dormant_times[k] / self.n_log_historical_overlap
         # avg_degree_of_dormancy = degree_of_dormancy.mean()
 
@@ -258,23 +258,23 @@ class BaseRecycler:
           if prev_count
           else 0.0
         )
-        layer_name = k[k.find('/')+1:k.rfind('/')-4]
+
         if self.track:
-          wandb.log({'{}_historical_overlap_rate'.format(layer_name): percent, 'grad_step': update_step})
-          wandb.log({'{}_current_historical_ratio(pre_merging)'.format(layer_name): 
+          wandb.log({'{}_historical_overlap_rate'.format(k[14:-13]): percent, 'grad_step': update_step})
+          wandb.log({'{}_current_historical_ratio(pre_merging)'.format(k[14:-13]): 
                      (curr_dead_count / pre_hist_dead_count).item(), 'grad_step': update_step})
-          wandb.log({'{}_historical_dormant_count(post_merging)'.format(layer_name): 
+          wandb.log({'{}_historical_dormant_count(post_merging)'.format(k[14:-13]): 
                      post_hist_dead_count.item(), 'grad_step': update_step})
-          wandb.log({'{}_mean_score_recycled'.format(layer_name): 
+          wandb.log({'{}_mean_score_recycled'.format(k[14:-13]): 
                      jnp.mean(score[prev_mask]), 'grad_step': update_step})
-          wandb.log({'{}_mean_score_nondead'.format(layer_name): 
+          wandb.log({'{}_mean_score_nondead'.format(k[14:-13]): 
                      jnp.mean(score[nondead_mask]), 'grad_step': update_step})
-          wandb.log({'{}_intersected_rate'.format(layer_name): 
+          wandb.log({'{}_intersected_rate'.format(k[14:-13]): 
                      prev_intersect_percent, 'grad_step': update_step})
-          wandb.log({'{}_dormant_percentage'.format(layer_name): 
+          wandb.log({'{}_dormant_percentage'.format(k[14:-13]): 
                      float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
       if self.track:
-        wandb.log({'overall_dormant_percentage': 
+        wandb.log({'overall dormant percentage': 
                   float(total_dead_count) / total_neurons, 'grad_step': update_step})
       self.prev_neuron_score = neuron_score_dict
     return log_dict
@@ -285,7 +285,7 @@ class BaseRecycler:
     return score <= self.dead_neurons_threshold
 
   def log_outgoing_weights_magnitude(self, param_dict, activations_dict, key):
-    """log: # (ZW)
+    """log: # TODO (ZW)
     1. magnitude of dormant neurons's outgoing_weights (in each layer)
     2. magnitude of the rest neurons' outgoing_weights in the same layer
     """
@@ -501,6 +501,7 @@ class NeuronRecycler(BaseRecycler):
     activations_score_dict = flax.traverse_util.flatten_dict(
         flax.core.frozen_dict.freeze(intermedieates), sep='/'
     )
+    print(12, intermedieates.keys())
     param_dict = flax.traverse_util.flatten_dict(params, sep='/')
 
     # create incoming and outgoing masks and reset bias of dead neurons.
@@ -539,6 +540,38 @@ class NeuronRecycler(BaseRecycler):
     outgoing_mask = flax.core.freeze(
         flax.traverse_util.unflatten_dict(outgoing_mask_dict, sep='/')
     )
+    # print(outgoing_mask.__class__) # <class 'flax.core.frozen_dict.FrozenDict'>
+    # for k in outgoing_mask.keys():
+    #   print(11, k)
+    #   for k1 in outgoing_mask[k]:
+    #     print(22, k1)
+    #     for k2 in outgoing_mask[k][k1]:
+    #       print(33, k2)
+    #       if k2 == 'kernel':
+    #         print(55, outgoing_mask[k][k1][k2].shape)
+    # import time
+    # time.sleep(22)
+    # 11 params
+    # 22 Conv_0
+    # 33 bias # None
+    # 33 kernel
+    # 55 (8, 8, 4, 32)
+    # 22 Conv_1
+    # 33 bias
+    # 33 kernel
+    # 55 (4, 4, 32, 64)
+    # 22 Conv_2
+    # 33 bias
+    # 33 kernel
+    # 55 (3, 3, 64, 64)
+    # 22 Dense_0
+    # 33 bias
+    # 33 kernel
+    # 55 (7744, 512)
+    # 22 final_layer
+    # 33 bias
+    # 33 kernel
+    # 55 (512, 6)
     if self.init_method_outgoing == 'random':
       reinit_fn = functools.partial(
           weight_reinit_random,
@@ -562,10 +595,11 @@ class NeuronRecycler(BaseRecycler):
 
     # reset mu, nu of adam optimizer for recycled weights.
     reset_momentum_fn = jax.jit(functools.partial(jax.tree_util.tree_map, reset_momentum))
-    new_mu = reset_momentum_fn(opt_state[0][1], incoming_mask)
-    new_mu = reset_momentum_fn(new_mu, outgoing_mask)
-    new_nu = reset_momentum_fn(opt_state[0][2], incoming_mask)
-    new_nu = reset_momentum_fn(new_nu, outgoing_mask)
+    # incoming_mask = flax.core.frozen_dict.unfreeze(incoming_mask)
+    new_mu = reset_momentum_fn(opt_state[0][1], flax.core.frozen_dict.unfreeze(incoming_mask))
+    new_mu = reset_momentum_fn(new_mu, flax.core.frozen_dict.unfreeze(outgoing_mask))
+    new_nu = reset_momentum_fn(opt_state[0][2], flax.core.frozen_dict.unfreeze(incoming_mask))
+    new_nu = reset_momentum_fn(new_nu, flax.core.frozen_dict.unfreeze(outgoing_mask))
     opt_state_list = list(opt_state)
     opt_state_list[0] = optax.ScaleByAdamState(
         opt_state[0].count, mu=new_mu, nu=new_nu
@@ -644,18 +678,16 @@ class NeuronRecycler(BaseRecycler):
     )
     # prepare mask of incoming and outgoing recycled connections
     for k in self.reset_layers:
-      if 'linear_projector' or 'final' in k:
-        continue
-      # for key in param_dict.keys():
-      #   print(key, k)
-      param_key = k + '/kernel'
+      for key in param_dict.keys():
+        print(key)
+      param_key = 'params/' + k + '/kernel' # TODO needs to be specified for each algo (if using different network architectures)
       param = param_dict[param_key]
       # This won't work for DRQ, since returned keys can be a list.
       # We don't support that at the moment.
       next_key = self.next_layers[k]
       if isinstance(next_key, list):
         next_key = next_key[0]
-      next_param = param_dict[next_key + '/kernel']
+      next_param = param_dict['params/' + next_key + '/kernel']
       activation = activations_dict[k + '_act/__call__'][0]
       neuron_mask = self._score2mask(activation, param, next_param, key)
 
@@ -667,7 +699,7 @@ class NeuronRecycler(BaseRecycler):
           else [self.next_layers[k]]
       )
       for next_k in next_keys:
-        next_param_key = next_k + '/kernel'
+        next_param_key = 'params/' + next_k + '/kernel'
         next_param = param_dict[next_param_key]
         incoming_mask, outgoing_mask = self.create_mask_helper(
             neuron_mask, param, next_param
@@ -680,11 +712,12 @@ class NeuronRecycler(BaseRecycler):
           key, subkey = random.split(key)
           outgoing_random_keys_dict[next_param_key] = subkey
 
-        if self.prune_dormant_neurons:
+        if self.prune_dormant_neurons: # NOTE (ZW) stop the gradients flowing through dormant neurons
+          # NOTE (ZW) Log the magnitude of outgoing weights of dormant neurons
           print('Pruning {} outgoing weights at layer {}'.format(outgoing_mask.sum(), k))
 
       # reset bias
-      bias_key = k + '/bias'
+      bias_key = 'params/' + k + '/bias'
       new_bias = jnp.zeros_like(param_dict[bias_key])
       if self.prune_dormant_neurons:
         new_bias -= 99999999

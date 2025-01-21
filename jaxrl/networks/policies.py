@@ -20,27 +20,33 @@ LOG_STD_MAX = 2.0
 class MSEPolicy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     dropout_rate: Optional[float] = None
 
     @nn.compact
     def __call__(self,
-                 observations: jnp.ndarray,
-                 temperature: float = 1.0,
-                 training: bool = False) -> jnp.ndarray:
-        outputs = MLP(self.hidden_dims,
-                      activate_final=True,
-                      dropout_rate=self.dropout_rate)(observations,
-                                                      training=training)
+                 observations: jnp.ndarray) -> jnp.ndarray:
+        # x = MLP(self.hidden_dims,
+        #               activate_final=True,
+        #               dropout_rate=self.dropout_rate)(observations,
+        #                                               training=training)
+        x = observations
+        for i, size in enumerate(self.hidden_dims):
+            layer = nn.Dense(size, kernel_init=default_init(), name='actor_dense{}'.format(i))
+            x = layer(x)
+            x = self.activations(x)
+            x = IdentityLayer(name=f'{layer.name}_act')(x)
 
         actions = nn.Dense(self.action_dim,
-                           kernel_init=default_init())(outputs)
+                           kernel_init=default_init(), name='final')(x)
         return nn.tanh(actions)
 
 
 class NormalTanhPolicy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
-    state_dependent_std: bool = True # TODO check if we need the scheduled std in official DrQ-v2
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    state_dependent_std: bool = True
     dropout_rate: Optional[float] = None
     final_fc_init_scale: float = 1.0
     log_std_min: Optional[float] = None
@@ -51,23 +57,29 @@ class NormalTanhPolicy(nn.Module):
     @nn.compact
     def __call__(self,
                  observations: jnp.ndarray,
-                 temperature: float = 1.0,
-                 training: bool = False) -> tfd.Distribution:
-        outputs = MLP(self.hidden_dims,
-                      activate_final=True,
-                      dropout_rate=self.dropout_rate)(observations,
-                                                      training=training)
+                 temperature: float = 1.0) -> tfd.Distribution:
+        # x = MLP(self.hidden_dims,
+        #               activate_final=True,
+        #               dropout_rate=self.dropout_rate)(observations,
+        #                                               training=training)
+        x = observations
+        for i, size in enumerate(self.hidden_dims):
+            layer = nn.Dense(size, kernel_init=default_init(), name='actor_dense{}'.format(i))
+            x = layer(x)
+            x = IdentityLayer(name=f'{layer.name}_preact')(x)
+            x = self.activations(x)
+            x = IdentityLayer(name=f'{layer.name}_act')(x)
 
         means = nn.Dense(self.action_dim,
                          kernel_init=default_init(
-                             self.final_fc_init_scale))(outputs)
+                             self.final_fc_init_scale), name='final')(x)
         if self.init_mean is not None:
             means += self.init_mean
 
         if self.state_dependent_std:
             log_stds = nn.Dense(self.action_dim,
                                 kernel_init=default_init(
-                                    self.final_fc_init_scale))(outputs)
+                                    self.final_fc_init_scale))(x)
         else:
             log_stds = self.param('log_stds', nn.initializers.zeros,
                                   (self.action_dim, ))
@@ -87,7 +99,84 @@ class NormalTanhPolicy(nn.Module):
                                                bijector=tfb.Tanh())
         else:
             return base_dist
+        
 
+class NormalTanhPolicywithScheduledStd(nn.Module):
+    hidden_dims: Sequence[int]
+    action_dim: int
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    state_dependent_std: bool = True
+    dropout_rate: Optional[float] = None
+    final_fc_init_scale: float = 1.0
+    log_std_min: Optional[float] = None
+    log_std_max: Optional[float] = None
+    tanh_squash_distribution: bool = True
+    init_mean: Optional[jnp.ndarray] = None
+
+    @nn.compact
+    def __call__(self,
+                 observations: jnp.ndarray,
+                 stddev: float,
+                 temperature: float = 1.0) -> tfd.Distribution:
+        # x = MLP(self.hidden_dims,
+        #               activate_final=True,
+        #               dropout_rate=self.dropout_rate)(observations,
+        #                                               training=training)
+        x = observations
+        for i, size in enumerate(self.hidden_dims):
+            layer = nn.Dense(size, kernel_init=default_init(), name='actor_dense{}'.format(i))
+            x = layer(x)
+            x = self.activations(x)
+            x = IdentityLayer(name=f'{layer.name}_act')(x)
+
+        means = nn.Dense(self.action_dim,
+                         kernel_init=default_init(
+                             self.final_fc_init_scale), name='final')(x)
+        if self.init_mean is not None:
+            means += self.init_mean
+
+        stds = jnp.zeros_like(means) + stddev
+
+        if not self.tanh_squash_distribution:
+            means = nn.tanh(means)
+
+        base_dist = tfd.MultivariateNormalDiag(loc=means,
+                                               scale_diag=stds*temperature)
+        if self.tanh_squash_distribution:
+            return tfd.TransformedDistribution(distribution=base_dist,
+                                               bijector=tfb.Tanh())
+        else:
+            return base_dist
+
+@functools.partial(jax.jit, static_argnames=('actor_def', 'distribution'))
+def _sample_multivariate_actions(
+        rng: PRNGKey,
+        stddev: float,
+        actor_def: nn.Module,
+        actor_params: Params,
+        observations: np.ndarray,
+        temperature: float = 1.0,
+        distribution: str = 'log_prob') -> Tuple[PRNGKey, jnp.ndarray]:
+    if distribution == 'det':
+        return rng, actor_def.apply({'params': actor_params}, observations,
+                                    temperature)
+    else:
+        dist = actor_def.apply({'params': actor_params}, observations, stddev,
+                               temperature)
+        rng, key = jax.random.split(rng)
+        return rng, dist.sample(seed=key)
+
+
+def sample_multivariate_actions(
+        rng: PRNGKey,
+        stddev: float,
+        actor_def: nn.Module,
+        actor_params: Params,
+        observations: np.ndarray,
+        temperature: float = 1.0,
+        distribution: str = 'log_prob') -> Tuple[PRNGKey, jnp.ndarray]:
+    return _sample_multivariate_actions(rng, stddev, actor_def, actor_params, observations,
+                                        temperature, distribution)
 
 class NormalTanhMixturePolicy(nn.Module):
     hidden_dims: Sequence[int]
@@ -134,20 +223,26 @@ class NormalTanhMixturePolicy(nn.Module):
         return tfd.Independent(dist, 1)
 
 
-@functools.partial(jax.jit, static_argnames=('actor_def', 'distribution'))
+@functools.partial(jax.jit, static_argnames=('actor_def', 'distribution', 'use_batch_norm'))
 def _sample_actions(
         rng: PRNGKey,
         actor_def: nn.Module,
         actor_params: Params,
         observations: np.ndarray,
         temperature: float = 1.0,
-        distribution: str = 'log_prob') -> Tuple[PRNGKey, jnp.ndarray]:
+        distribution: str = 'log_prob',
+        use_batch_norm: bool = False,
+        batch_stats = None) -> Tuple[PRNGKey, jnp.ndarray]:
     if distribution == 'det':
         return rng, actor_def.apply({'params': actor_params}, observations,
                                     temperature)
     else:
-        dist = actor_def.apply({'params': actor_params}, observations,
-                               temperature)
+        if use_batch_norm:
+            dist = actor_def.apply({'params': actor_params, 'batch_stats': batch_stats}, 
+                                   observations, temperature, train=False)
+        else:
+            dist = actor_def.apply({'params': actor_params}, observations,
+                                    temperature)
         rng, key = jax.random.split(rng)
         return rng, dist.sample(seed=key)
 
@@ -158,9 +253,11 @@ def sample_actions(
         actor_params: Params,
         observations: np.ndarray,
         temperature: float = 1.0,
-        distribution: str = 'log_prob') -> Tuple[PRNGKey, jnp.ndarray]:
+        distribution: str = 'log_prob',
+        use_batch_norm: bool = False,
+        batch_stats = None) -> Tuple[PRNGKey, jnp.ndarray]:
     return _sample_actions(rng, actor_def, actor_params, observations,
-                           temperature, distribution)
+                           temperature, distribution, use_batch_norm=use_batch_norm, batch_stats=batch_stats)
 
 
 class IdentityLayer(nn.Module):
@@ -186,7 +283,7 @@ class NormalTanhDeterministicPolicy(nn.Module):
     @nn.compact
     def __call__(self,
                  observations: jnp.ndarray,
-                 stddev: float = 0.2,
+                 stddev: float,
                  training: bool = False) -> tfd.Distribution:
         # x = MLP(self.hidden_dims,
         #               activate_final=True,
@@ -194,14 +291,14 @@ class NormalTanhDeterministicPolicy(nn.Module):
         #                                               training=training)
         x = observations
         for i, size in enumerate(self.hidden_dims):
-            layer = nn.Dense(size, kernel_init=default_init(), name='dense{}'.format(i))
+            layer = nn.Dense(size, kernel_init=default_init(), name='actor_dense{}'.format(i))
             x = layer(x)
             x = self.activations(x)
             x = IdentityLayer(name=f'{layer.name}_act')(x)
 
         means = nn.Dense(self.action_dim,
                          kernel_init=default_init(
-                             self.final_fc_init_scale), name='final')(x)
+                         self.final_fc_init_scale), name='final')(x)
         if self.init_mean is not None:
             means += self.init_mean
         means = nn.tanh(means)
@@ -217,7 +314,7 @@ class TruncatedNormal:
         """Initialize the truncated normal distribution."""
         # Store the parameters specific to TruncatedNormal
         self.mu = jnp.clip(loc, low + eps, high - eps)
-        self.sigma = jnp.zeros_like(loc) + scale # TODO schedule sigma as decribed in the paper
+        self.sigma = jnp.zeros_like(loc) + scale
         self.low = low
         self.high = high
         self.eps = eps
@@ -228,15 +325,17 @@ class TruncatedNormal:
         return x - jax.lax.stop_gradient(x) + jax.lax.stop_gradient(clamped_x)
 
     def sample(self, seed: PRNGKey,
-                    clip: Optional[float] = None,
-                    sample_shape: Union[Tuple[int, ...], int] = ()) -> jnp.ndarray:
+                     clip: Optional[float] = None,
+                     sample_shape: Optional[tuple] = None) -> jnp.ndarray:
         """Sample from the truncated normal distribution with optional clipping of noise."""
+        if sample_shape is None:
+            sample_shape = jnp.shape(self.mu)
         
         # Generate standard normal samples
-        eps = jax.random.normal(seed, shape=self.mu.shape, dtype=self.mu.dtype)
+        eps = jax.random.normal(seed, shape=sample_shape, dtype=self.mu.dtype)
 
         # Scale the samples
-        eps = eps * self.sigma
+        eps *= self.sigma
         
         # Optionally clip the noise
         if clip is not None:
@@ -249,7 +348,7 @@ class TruncatedNormal:
         return self._clamp(x)
 
 
-@functools.partial(jax.jit, static_argnames=('actor_def', 'temperature'))
+@functools.partial(jax.jit, static_argnames=('actor_def', 'temperature')) # NOTE debugging!
 def _sample_deterministic_actions(
         rng: PRNGKey,
         stddev: float,

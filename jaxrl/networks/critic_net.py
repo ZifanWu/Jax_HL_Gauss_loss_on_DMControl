@@ -68,7 +68,7 @@ class ActivationTrackCritic(nn.Module):
     n_logits: int = 1
     activate_final: int = False
     dropout_rate: Optional[float] = None
-    # layer_names = []
+    use_layer_norm: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
@@ -76,6 +76,9 @@ class ActivationTrackCritic(nn.Module):
         for i, size in enumerate(self.hidden_dims):
             layer = nn.Dense(size, kernel_init=default_init(), name='dense{}'.format(i))
             x = layer(x)
+            x = IdentityLayer(name=f'{layer.name}_preact')(x)
+            if self.use_layer_norm:
+                x = nn.LayerNorm()(x)
             x = self.activations(x)
             x = IdentityLayer(name=f'{layer.name}_act')(x)
             if self.dropout_rate is not None:
@@ -83,12 +86,14 @@ class ActivationTrackCritic(nn.Module):
                     x, deterministic=not training)
         layer = nn.Dense(self.n_logits, kernel_init=default_init(), name='final')
         x = layer(x)
+        x = IdentityLayer(name=f'{layer.name}_act')(x)
         if self.activate_final:
+            x = IdentityLayer(name=f'{layer.name}_preact')(x)
             x = self.activations(x)
             if self.dropout_rate is not None:
                 x = nn.Dropout(rate=self.dropout_rate)(
                     x, deterministic=not training)
-            x = IdentityLayer(name=f'{layer.name}_act')(x)
+            # x = IdentityLayer(name=f'{layer.name}_act')(x)
         return x
 
 
@@ -180,6 +185,7 @@ class ActivationTrackDoubleDistributionalCritic(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     activate_final: int = False
     num_qs: int = 2
+    use_layer_norm: bool = False
 
     @nn.compact
     def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
@@ -187,7 +193,7 @@ class ActivationTrackDoubleDistributionalCritic(nn.Module):
         for q in range(self.num_qs):
             x = inputs
             critic = ActivationTrackCritic(self.hidden_dims, self.activations, n_logits=self.n_logits,
-                              name='critic{}'.format(q))(x)
+                              name='critic{}'.format(q), use_layer_norm=self.use_layer_norm)(x)
             critics.append(critic)
         return jnp.stack(critics) # (2, 1, 1)
 

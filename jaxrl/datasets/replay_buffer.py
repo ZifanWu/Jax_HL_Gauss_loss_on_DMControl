@@ -106,7 +106,7 @@ class NStepReplayBuffer(Dataset):
                          size=0)
         
         self.n_step_returns = np.empty((capacity, ), dtype=np.float32)
-        self.n_step_trgt = n_step_trgt
+        self.n_step_trgt = int(n_step_trgt)
         self.discount = discount
 
         self.size = 0

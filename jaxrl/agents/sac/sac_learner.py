@@ -22,7 +22,7 @@ from jaxrl.networks.common import InfoDict, Model, PRNGKey
 def _update_jit(
     rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
     temp: Model, batch: Batch, discount: float, tau: float,
-    target_entropy: float, backup_entropy: bool, update_target: bool
+    target_entropy: float, soft_critic: bool, update_target: bool
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
 
     rng, key = jax.random.split(rng)
@@ -33,7 +33,7 @@ def _update_jit(
                                             temp,
                                             batch,
                                             discount,
-                                            backup_entropy=backup_entropy)
+                                            soft_critic=True)
     if update_target:
         new_target_critic = target_update(new_critic, target_critic, tau)
     else:

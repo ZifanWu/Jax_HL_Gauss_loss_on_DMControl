@@ -64,10 +64,14 @@ def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
 
 def update(key: PRNGKey, stddev: float, encoder: Model, actor: Model, critic: Model, target_critic: Model,
             batch: Batch, discount: float, stddev_clip: float,
-           soft_critic: bool) -> Tuple[Model, InfoDict]:
+           soft_critic: bool, msepolicy: bool = False) -> Tuple[Model, InfoDict]:
     next_encodings = encoder(batch.next_observations)
-    dist = actor(next_encodings, stddev)
-    next_actions = dist.sample(seed=key, clip=stddev_clip)
+    if msepolicy:
+        next_actions = actor(next_encodings, stddev)
+    else:
+        dist = actor(next_encodings, stddev=stddev)
+        next_actions = dist.sample(seed=key, clip=stddev_clip)
+    # next_actions = actor(next_encodings)
     next_qs = target_critic(next_encodings, next_actions) # (2, B)
     next_q1, next_q2 = next_qs[0], next_qs[1]
     next_q = jnp.minimum(next_q1, next_q2)

@@ -46,80 +46,6 @@ def weight_reinit_zero(param, mask):
     new_param = jnp.zeros_like(param)
     param = jnp.where(mask == 1, new_param, param)
     return param
-  
-
-def weight_shrink(param, mask, k):
-  param = jnp.where(mask == 1, param / k, param)
-  return param
-  
-
-def weight_revive(param, next_param, dead_neuron_mask, key, 
-                  mass_incoming_mask, mass_outgoing_mask,
-                  eps, k):
-  '''
-    dead_mask: the incoming-weight mask of ONE dead neuron
-  '''
-  new_incoming_param = (param * mass_incoming_mask) / k
-  new_outgoing_param = next_param * mass_outgoing_mask
-  dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
-      dead_neuron_mask, param, next_param
-  )
-  key, subkey = random.split(key)
-  noise = jax.random.normal(subkey) * eps
-  param = jnp.where(
-    dead_incoming_mask, new_incoming_param + noise, param
-  )
-  key, subkey = random.split(key)
-  noise = jax.random.normal(subkey) * eps
-  next_param = jnp.where(
-    dead_outgoing_mask, new_outgoing_param + noise, next_param
-  )
-  return param, next_param, key
-
-
-def create_mask_helper(neuron_mask, current_param, next_param):
-  """generate incoming and outgoing weight mask given dead neurons mask.
-
-  Args:
-    neuron_mask: mask of size equals the width of a layer.
-    current_param: incoming weights of a layer.
-    next_param: outgoing weights of a layer.
-
-  Returns:
-    incoming_mask
-    outgoing_mask
-  """
-
-  def mask_creator(expansion_axis, expansion_axes, param, neuron_mask):
-    """create a mask of weight matrix given 1D vector of neurons mask.
-
-    Args:
-      expansion_axis: List contains 1 axis. The dimension to expand the mask
-        for dense layers (weight shape 2D).
-      expansion_axes: List conrtains 3 axes. The dimensions to expand the
-        score for convolutional layers (weight shape 4D).
-      param: weight.
-      neuron_mask: 1D mask that represents dead neurons(features).
-
-    Returns:
-      mask: mask of weight.
-    """
-    axes = expansion_axis
-    # flatten layer
-    # The size of neuron_mask is the same as the width of last conv layer.
-    # This conv layer will be flatten and connected to dense layer.
-    # we repeat each value of a feature map to cover the spatial dimension.
-    if axes[0] == 1 and (param.shape[0] > neuron_mask.shape[0]):
-      num_repeatition = int(param.shape[0] / neuron_mask.shape[0])
-      neuron_mask = jnp.repeat(neuron_mask, num_repeatition, axis=0)
-    mask = jnp.expand_dims(neuron_mask, axis=tuple(axes))
-    for i in range(len(axes)):
-      mask = jnp.repeat(mask, param.shape[axes[i]], axis=axes[i])
-    return mask
-
-  incoming_mask = mask_creator([0], [0, 1, 2], current_param, neuron_mask)
-  outgoing_mask = mask_creator([1], [0, 1, 3], next_param, neuron_mask)
-  return incoming_mask, outgoing_mask
 
 
 def weight_reinit_random(
@@ -183,24 +109,13 @@ def _get_norm_per_neuron(param, axes):
 
 
 @jax.jit
-def compute_quantiles(arr: jnp.ndarray, q):
-  return jnp.quantile(arr, q)
-
-
-@jax.jit
-def sort_array(arr: jnp.ndarray):
-  # Sort the array in descending order and return the indices
-  return jnp.argsort(arr)[::-1]
-
-
-def topK_and_leastKM_elements(arr: jnp.ndarray, K: int):
-  indices = sort_array(arr)
-  top_K_indices = indices[:K]
-  top_K_values = arr[top_K_indices]
-  # M = top_K_values[-1].astype(int)
-  # least_KM_indices = indices[-K * (M-1):]
-  # least_KM_values = arr[least_KM_indices]
-  return top_K_values, top_K_indices, indices
+def top_3_elements(arr: jnp.ndarray):
+  # Sort the array in descending order and take the first 3 elements
+  indices = jnp.argsort(arr)[::-1]
+  top_3_indices = indices[:3]
+  # least3_indices = indices[-3:]
+  top_3_values = arr[top_3_indices]
+  return top_3_values, top_3_indices
 
 
 @jax.jit
@@ -290,8 +205,8 @@ class BaseRecycler:
     return step % self.dormancy_logging_period == 0
 
   def maybe_log_deadneurons(self, update_step, intermediates, preactivations, params):
-    is_logging = self.is_logging_step(update_step)
-    if is_logging: # TODO debugging
+    is_logging = self.is_logging_step(update_step) # TODO debugging
+    if is_logging:
       self.log_historical_dead_neuron_overlapping(intermediates, preactivations, params, update_step)
   
   def _compute_mask(self, score_dict):
@@ -370,9 +285,8 @@ class BaseRecycler:
           # so we check if quantiles matches the theoretical quantiles of the Gaussian with that mean and that std
           cdf_diff = check_normality(preactivation)
           wandb.log({'{}_cdf_difference'.format(layer_name): cdf_diff, 'grad_step': update_step})
-          # q = jnp.array([0.25, 0.5, 0.75])
-          # quantiles = jnp.quantile(jnp.mean(preactivation, axis=0), q) # (q.shape)
-          quantiles = compute_quantiles(jnp.mean(preactivation, axis=0), jnp.array([0.25, 0.5, 0.75]))
+          q = jnp.array([0.25, 0.5, 0.75])
+          quantiles = jnp.quantile(jnp.mean(preactivation, axis=0), q) # (q.shape)
           wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0], 'grad_step': update_step})
           wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1], 'grad_step': update_step})
           wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2], 'grad_step': update_step})
@@ -427,7 +341,7 @@ class BaseRecycler:
           thres_idx += 1
         # log top activations
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
-          top3_values, top3_indices, _ = topK_and_leastKM_elements(activation, 3)
+          top3_values, top3_indices = top_3_elements(activation)
           dense_top3_indices.append(top3_indices)
           wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0], 'grad_step': update_step})
           wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1], 'grad_step': update_step})
@@ -445,11 +359,16 @@ class BaseRecycler:
         for k in self.reset_layers:
           if 'dense' in k and ('critic0' in k or 'actor' in k):
             top3_indices = dense_top3_indices.pop(0)
-            param_key = k + '/kernel'
-            bias_key = k + '/bias'
+            if 'critic0' in k:
+              param_key = 'CriticHead/' + k + '/kernel'
+              bias_key = 'CriticHead/' + k + '/bias'
+            elif 'actor' in k:
+              param_key = 'NormalTanhPolicy_0/' + k + '/kernel'
+              bias_key = 'NormalTanhPolicy_0/' + k + '/bias'
             abs_param = jnp.abs(param_dict[param_key]) # (8, 8, 4, 32)(4, 4, 32, 64)(3, 3, 64, 64)(7744, 512)(512, 6)
             wandb.log({'{}_w_mean'.format(k): abs_param.mean(), 'grad_step': update_step})
-            quantiles = compute_quantiles(abs_param, jnp.array([0.25, 0.5, 0.75]))
+            q = jnp.array([0.25, 0.5, 0.75]) # quantiles
+            quantiles = jnp.quantile(abs_param, q)
             wandb.log({'{}_w_1qt'.format(k): quantiles[0], 'grad_step': update_step})
             wandb.log({'{}_w_2qt'.format(k): quantiles[1], 'grad_step': update_step})
             wandb.log({'{}_w_3qt'.format(k): quantiles[2], 'grad_step': update_step})
@@ -462,7 +381,7 @@ class BaseRecycler:
             
             abs_bias = jnp.abs(param_dict[bias_key])
             wandb.log({'{}_b_mean'.format(k): abs_bias.mean(), 'grad_step': update_step})
-            quantiles = compute_quantiles(abs_bias, jnp.array([0.25, 0.5, 0.75]))
+            quantiles = jnp.quantile(abs_bias, q)
             wandb.log({'{}_b_1qt'.format(k): quantiles[0], 'grad_step': update_step})
             wandb.log({'{}_b_2qt'.format(k): quantiles[1], 'grad_step': update_step})
             wandb.log({'{}_b_3qt'.format(k): quantiles[2], 'grad_step': update_step})
@@ -475,6 +394,94 @@ class BaseRecycler:
     del key, param, next_param
     score = self.estimate_neuron_score(activation)
     return score <= self.dead_neurons_threshold
+
+  def log_outgoing_weights_magnitude(self, param_dict, activations_dict, key):
+    """log: # TODO (ZW)
+    1. magnitude of dormant neurons's outgoing_weights (in each layer)
+    2. magnitude of the rest neurons' outgoing_weights in the same layer
+    """
+    incoming_mask_dict = {
+        k: jnp.zeros_like(p) if p.ndim != 1 else None
+        for k, p in param_dict.items()
+    }
+    outgoing_mask_dict = {
+        k: jnp.zeros_like(p) if p.ndim != 1 else None
+        for k, p in param_dict.items()
+    }
+    ingoing_random_keys_dict = {k: None for k in param_dict}
+    outgoing_random_keys_dict = (
+        {k: None for k in param_dict}
+        if self.init_method_outgoing == 'random'
+        else {}
+    )
+
+    # prepare mask of incoming and outgoing recycled connections
+    for k in self.reset_layers:
+      param_key = 'params/' + k + '/kernel'
+      param = param_dict[param_key]
+      # This won't work for DRQ, since returned keys can be a list.
+      # We don't support that at the moment.
+      next_key = self.next_layers[k]
+      if isinstance(next_key, list):
+        next_key = next_key[0]
+      next_param = param_dict['params/' + next_key + '/kernel']
+      activation = activations_dict[k + '_act/__call__'][0]
+      neuron_mask = self._score2mask(activation, param, next_param, key)
+
+      # the for loop handles the case where a layer has multiple next layers
+      # like the case in DrQ where the output layer has multihead.
+      next_keys = (
+          self.next_layers[k]
+          if isinstance(self.next_layers[k], list)
+          else [self.next_layers[k]]
+      )
+      for next_k in next_keys:
+        next_param_key = 'params/' + next_k + '/kernel'
+        next_param = param_dict[next_param_key]
+        incoming_mask, outgoing_mask = self.create_mask_helper(
+            neuron_mask, param, next_param
+        )
+        incoming_mask_dict[param_key] = incoming_mask
+        outgoing_mask_dict[next_param_key] = outgoing_mask
+        key, subkey = random.split(key)
+        ingoing_random_keys_dict[param_key] = subkey
+        if self.init_method_outgoing == 'random':
+          key, subkey = random.split(key)
+          outgoing_random_keys_dict[next_param_key] = subkey
+
+    #     if self.prune_dormant_neurons: # NOTE (ZW) stop the gradients flowing through dormant neurons
+    #       # NOTE (ZW) Log the magnitude of outgoing weights of dormant neurons
+    #       print('Pruning {} outgoing weights at layer {}'.format(outgoing_mask.sum(), k))
+    #       next_param = jnp.where(~outgoing_mask, next_param, jax.lax.stop_gradient(next_param))
+        
+    #       if self.first_time_pruning and (jnp.count_nonzero(outgoing_mask) > 0):
+    #         self.next_param_key = next_param_key
+    #         self.outgoing_mask = outgoing_mask
+    #         self.first_time_pruning = False
+
+    # if (not self.first_time_pruning) and self.prune_dormant_neurons:
+    #   print(jnp.count_nonzero(self.outgoing_mask), self.next_param_key)
+    #   frozen_params = jnp.where(self.outgoing_mask == 1, jnp.zeros_like(param_dict[self.next_param_key]), param_dict[self.next_param_key])
+    #   print(jnp.linalg.vector_norm(frozen_params).item())
+    #   import time
+    #   time.sleep(2)
+    #   if self.track:
+    #     wandb.log({'frozen_params_norm': jnp.linalg.vector_norm(frozen_params).item(), 'grad_step': self._last_update_step})
+
+      # reset bias
+      bias_key = 'params/' + k + '/bias'
+      new_bias = jnp.zeros_like(param_dict[bias_key])
+      param_dict[bias_key] = jnp.where(
+          neuron_mask, new_bias, param_dict[bias_key]
+      ) # True entities in param_dict[bias_key] will be replaced by new_bias
+
+    return (
+        incoming_mask_dict,
+        outgoing_mask_dict,
+        ingoing_random_keys_dict,
+        outgoing_random_keys_dict,
+        param_dict,
+    )
 
   def estimate_neuron_score(self, activation, is_cbp=False):
     """Calculates neuron score based on absolute value of activation.
@@ -525,13 +532,6 @@ class NeuronRecycler(BaseRecycler):
       outgoing_scale=1.0,
       network='nature',
       prune_dormant_neurons=False,
-      neutralize_dormant_neurons=False,
-      dead_thres=0.1,
-      mass_thres=10,
-      weight_revive_eps=0.01,
-      K=5,
-      NO_K_mass_thres=True,
-      ntrlize_thres=2,
       **kwargs,
   ):
     super(NeuronRecycler, self).__init__(all_layers_names, track, **kwargs)
@@ -540,12 +540,6 @@ class NeuronRecycler(BaseRecycler):
     self.incoming_scale = incoming_scale
     self.outgoing_scale = outgoing_scale
     self.prune_dormant_neurons = prune_dormant_neurons
-    self.neutralize_dormant_neurons = neutralize_dormant_neurons
-    self.dead_thres = dead_thres
-    self.weight_revive_eps = weight_revive_eps
-    self.NO_K_mass_thres = NO_K_mass_thres
-    self.ntrlize_thres = ntrlize_thres
-    self.K = K
     self.track = track
     # prepare a dict that has pointer to next layer give a layer name
     # this is needed because neuron recycle reinitalizes both sides
@@ -573,12 +567,12 @@ class NeuronRecycler(BaseRecycler):
         update_step >= self.reset_start_step
         and update_step < self.reset_end_step
     )
-    return self.is_update_iter(update_step) and within_reset_interval # TODO debugging
+    return self.is_update_iter(update_step) and within_reset_interval
 
   def is_intermediated_required(self, update_step):
     is_logging = self.is_logging_step(update_step)
     is_update_iter = self.is_update_iter(update_step)
-    return is_logging or is_update_iter # TODO debugging
+    return is_logging or is_update_iter
 
   def update_reset_layers(self, reset_start_layer_idx):
     self.reset_layers = self.all_layers_names[reset_start_layer_idx:]
@@ -587,10 +581,6 @@ class NeuronRecycler(BaseRecycler):
   def update_weights(self, intermediates, params, key, opt_state):
     if self.prune_dormant_neurons:
       new_param = self.prune_dead_neurons(
-          intermediates, params, key, opt_state
-      )
-    elif self.neutralize_dormant_neurons:
-      new_param, opt_state = self.neutralize_massive_and_dead_neurons(
           intermediates, params, key, opt_state
       )
     else:
@@ -714,20 +704,11 @@ class NeuronRecycler(BaseRecycler):
 
     # reset mu, nu of adam optimizer for recycled weights.
     reset_momentum_fn = jax.jit(functools.partial(jax.tree_util.tree_map, reset_momentum))
-    incoming_mask = flax.core.FrozenDict({k: v for k, v in incoming_mask.items() if 'Encoder' not in k})
-    outgoing_mask = flax.core.FrozenDict({k: v for k, v in outgoing_mask.items() if 'Encoder' not in k})
-    # print(0, incoming_mask.keys())frozen_dict_keys(['CriticHead', 'LayerNorm_0', 'dense-1_layernorm_tanh'])
-    # for k in incoming_mask.keys():
-      # print(11, incoming_mask[k].keys())(['critic0', 'critic1'])(['bias', 'kernel'])
-    # import time
-    # time.sleep(2222)
-    # print(incoming_mask['CriticHead']['critic0']['dense0']['kernel'])
-    # print(incoming_mask['CriticHead']['critic0']['dense0']['kernel'].shape)
-    # print(isinstance(incoming_mask, flax.core.FrozenDict))
-    new_mu = reset_momentum_fn(opt_state[0][1], incoming_mask)
-    new_mu = reset_momentum_fn(new_mu, outgoing_mask)
-    new_nu = reset_momentum_fn(opt_state[0][2], incoming_mask)
-    new_nu = reset_momentum_fn(new_nu, outgoing_mask)
+    # incoming_mask = flax.core.frozen_dict.unfreeze(incoming_mask)
+    new_mu = reset_momentum_fn(opt_state[0][1], flax.core.frozen_dict.unfreeze(incoming_mask))
+    new_mu = reset_momentum_fn(new_mu, flax.core.frozen_dict.unfreeze(outgoing_mask))
+    new_nu = reset_momentum_fn(opt_state[0][2], flax.core.frozen_dict.unfreeze(incoming_mask))
+    new_nu = reset_momentum_fn(new_nu, flax.core.frozen_dict.unfreeze(outgoing_mask))
     opt_state_list = list(opt_state)
     opt_state_list[0] = optax.ScaleByAdamState(
         opt_state[0].count, mu=new_mu, nu=new_nu
@@ -770,66 +751,10 @@ class NeuronRecycler(BaseRecycler):
     ) = self.create_masks(param_dict, activations_score_dict, key)
     return params
 
-  def neutralize_massive_and_dead_neurons(self, intermedieates, params, key, opt_state):
-    """Recycle dead neurons by reinitalizie incoming and outgoing connections.
-
-    Incoming connections are randomly initalized and outgoing connections
-    are zero initalized.
-    A featuremap is considered dead when its score is below or equal
-    dead neuron threshold.
-    Args:
-      intermedieates: pytree contains the activations over a batch.
-      params: current weights of the model.
-      key: used to generate random keys.
-      opt_state: state of optimizer.
-
-    Returns:
-      new model params after recycling dead neurons.
-      opt_state: new state for the optimizer
-
-    Raises: raise error if init_method_outgoing is not one of the following
-    (random, zero).
-    """
-    activations_score_dict = flax.traverse_util.flatten_dict(
-        flax.core.frozen_dict.freeze(intermedieates), sep='/'
-    )
-    param_dict = flax.traverse_util.flatten_dict(params, sep='/')
-    # create incoming and outgoing masks and reset bias of dead neurons.
-    (
-        param_dict, 
-        dead_incoming_mask_dict, 
-        dead_outgoing_mask_dict
-    ) = self.create_dead_mass_masks(param_dict, activations_score_dict, key)
-
-    params = flax.core.freeze(
-        flax.traverse_util.unflatten_dict(param_dict, sep='/')
-    )
-    dead_incoming_mask = flax.core.freeze(
-        flax.traverse_util.unflatten_dict(dead_incoming_mask_dict, sep='/')
-    )
-    dead_outgoing_mask = flax.core.freeze(
-        flax.traverse_util.unflatten_dict(dead_outgoing_mask_dict, sep='/')
-    )
-
-    # reset mu, nu of adam optimizer for recycled weights.
-    reset_momentum_fn = jax.jit(functools.partial(jax.tree_util.tree_map, reset_momentum))
-    dead_incoming_mask = flax.core.FrozenDict({k: v for k, v in dead_incoming_mask.items() if 'Encoder' not in k})
-    dead_outgoing_mask = flax.core.FrozenDict({k: v for k, v in dead_outgoing_mask.items() if 'Encoder' not in k})
-    new_mu = reset_momentum_fn(opt_state[0][1], dead_incoming_mask)
-    new_mu = reset_momentum_fn(new_mu, dead_outgoing_mask)
-    new_nu = reset_momentum_fn(opt_state[0][2], dead_incoming_mask)
-    new_nu = reset_momentum_fn(new_nu, dead_outgoing_mask)
-    opt_state_list = list(opt_state)
-    opt_state_list[0] = optax.ScaleByAdamState(
-        opt_state[0].count, mu=new_mu, nu=new_nu
-    )
-    opt_state = tuple(opt_state_list)
-    return params, opt_state
-
   def _score2mask(self, activation, param, next_param, key):
     del key, param, next_param
     score = self.estimate_neuron_score(activation)
-    return score <= self.dead_thres
+    return score <= self.dead_neurons_threshold
 
   def create_masks(self, param_dict, activations_dict, key):
     """create the masks for recycled weights based on neurons scores.
@@ -862,9 +787,12 @@ class NeuronRecycler(BaseRecycler):
     )
     # prepare mask of incoming and outgoing recycled connections
     for k in self.reset_layers:
-      # print(param_dict.keys())
-      # print(self.reset_layers)
-      param_key = k + '/kernel' # NOTE needs to be specified for each algo (if using different network architectures)
+      for key in param_dict.keys():
+        print(key, k)
+      # import time
+      # time.sleep(22)
+      
+      param_key = k + '/kernel' # TODO needs to be specified for each algo (if using different network architectures)
       param = param_dict[param_key]
       # This won't work for DRQ, since returned keys can be a list.
       # We don't support that at the moment.
@@ -915,117 +843,6 @@ class NeuronRecycler(BaseRecycler):
         ingoing_random_keys_dict,
         outgoing_random_keys_dict,
         param_dict,
-    )
-    
-  def create_dead_mass_masks(self, param_dict, activations_dict, key):
-    """create the masks for recycled weights based on neurons scores.
-
-    Args:
-      param_dict: dict of model params.
-      activations_dict: dict of the neuron score of each layer.
-      key: used seed for random weights.
-
-    Returns:
-      incoming_mask_dict
-      outgoing_mask_dict
-      ingoing_random_keys_dict
-      outgoing_random_keys_dict
-      param_dict
-    """
-    dead_incoming_mask_dict = {
-        k: jnp.zeros_like(p) if p.ndim != 1 else None
-        for k, p in param_dict.items()
-    }
-    dead_outgoing_mask_dict = {
-        k: jnp.zeros_like(p) if p.ndim != 1 else None
-        for k, p in param_dict.items()
-    }
-    # prepare mask of incoming and outgoing recycled connections
-    for k in self.reset_layers:      
-      param_key = k + '/kernel' # NOTE needs to be specified for each algo (if using different network architectures)
-      param = param_dict[param_key] # (51, 256) CriticHead/critic0/dense0
-      next_k = self.next_layers[k]
-      next_param_key = next_k + '/kernel'
-      next_param = param_dict[next_param_key]
-
-      activation = activations_dict[k + '_act/__call__'][0]
-      score = self.estimate_neuron_score(activation)
-      top_K_values, _, indices = topK_and_leastKM_elements(score, self.K)
-      
-      # determine M (how many dead neurons will be assigned to each massive neuron)
-      M = top_K_values[-1].astype(int)
-      if M < max(2, self.ntrlize_thres): # the massive neuron shouldn't be below the threshold
-        continue
-      else:
-        n_death = jnp.count_nonzero(score <= self.dead_thres)
-        if n_death >= self.K * (M-1):
-          least_KM_indices = indices[-self.K * (M-1):]
-        else: # when the number of dead neurons are not sufficient to divide the massive neuron into 1
-          least_KM_indices = indices[-n_death:]
-          M = n_death // self.K + 1
-
-      dead_neuron_mask = jnp.zeros_like(score)
-      dead_neuron_mask = dead_neuron_mask.at[least_KM_indices].set(1)
-      dead_neuron_mask = dead_neuron_mask != 0
-      dead_incoming_mask, dead_outgoing_mask = self.create_mask_helper(
-          dead_neuron_mask, param, next_param
-      )
-      dead_incoming_mask_dict[param_key] = dead_incoming_mask
-      dead_outgoing_mask_dict[next_param_key] = dead_outgoing_mask
-      
-      mass_thres = M # No.K neuron's score
-      
-      for K in range(self.K):
-        if not self.NO_K_mass_thres:
-          mass_thres = top_K_values[K].astype(int)
-        mass_neuron_mask = jnp.zeros_like(score)
-        mass_neuron_mask = mass_neuron_mask.at[indices[K]].set(1)
-        mass_neuron_mask = mass_neuron_mask != 0
-        mass_incoming_mask, mass_outgoing_mask = self.create_mask_helper(
-            mass_neuron_mask, param, next_param
-        )
-        # reset incoming weights of massive neurons
-        weight_shrink_fn = jax.jit(
-          functools.partial(weight_shrink, k=mass_thres)
-        )
-        shrinked_param = weight_shrink_fn(param, mass_incoming_mask)
-
-        # reset incoming weights of dead neurons
-        weight_revive_fn = jax.jit(
-            functools.partial(weight_revive, eps=self.weight_revive_eps, k=mass_thres)
-        )
-        key, subkey = random.split(key)
-        revive_indices = jax.random.choice(subkey, least_KM_indices, shape=(M-1,), replace=False)
-        least_KM_indices = jnp.array([i for i in least_KM_indices if i not in revive_indices])
-        dead_neuron_mask = jnp.zeros_like(score)
-        dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
-        dead_neuron_mask = dead_neuron_mask != 0
-        param, next_param, key = weight_revive_fn(
-            param, next_param, dead_neuron_mask, key, mass_incoming_mask, mass_outgoing_mask
-        )
-
-        # replace old weights
-        param_dict[param_key] = param
-        param_dict[next_param_key] = next_param
-        param_dict[param_key] = jnp.where(
-          mass_incoming_mask, shrinked_param, param_dict[param_key]
-        )
-
-        # reset bias
-        bias_key = k + '/bias'
-        mass_bias = param_dict[bias_key][mass_neuron_mask][0]
-        new_bias = mass_bias / mass_thres
-        param_dict[bias_key] = jnp.where(
-            dead_neuron_mask, new_bias, param_dict[bias_key]
-        )
-        param_dict[bias_key] = jnp.where(
-            mass_neuron_mask, new_bias, param_dict[bias_key]
-        ) # True entities in param_dict[bias_key] will be replaced by new_bias    
-    
-    return (
-        param_dict, 
-        dead_incoming_mask_dict, 
-        dead_outgoing_mask_dict
     )
 
   def create_mask_helper(self, neuron_mask, current_param, next_param):

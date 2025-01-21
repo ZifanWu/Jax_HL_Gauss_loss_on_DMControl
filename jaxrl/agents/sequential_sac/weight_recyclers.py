@@ -230,7 +230,7 @@ class BaseRecycler:
           self.dormant_times[k] = jnp.zeros_like(prev_mask).astype(float)
           # self.degree_of_dormancy[k] = jnp.zeros_like(curr_mask).astype(float)
         self.dormant_times[k] += curr_mask.astype(float)
-        # (ZW) what if we reset a neuron only if its degree_of_dormancy has reached a threshold
+        # TODO (ZW) what if we reset a neuron only if its degree_of_dormancy has reached a threshold
         degree_of_dormancy = self.dormant_times[k] / self.n_log_historical_overlap
         # avg_degree_of_dormancy = degree_of_dormancy.mean()
 
@@ -258,23 +258,23 @@ class BaseRecycler:
           if prev_count
           else 0.0
         )
-        layer_name = k[k.find('/')+1:k.rfind('/')-4]
+
         if self.track:
-          wandb.log({'{}_historical_overlap_rate'.format(layer_name): percent, 'grad_step': update_step})
-          wandb.log({'{}_current_historical_ratio(pre_merging)'.format(layer_name): 
+          wandb.log({'{}_historical_overlap_rate'.format(k[14:-13]): percent, 'grad_step': update_step})
+          wandb.log({'{}_current_historical_ratio(pre_merging)'.format(k[14:-13]): 
                      (curr_dead_count / pre_hist_dead_count).item(), 'grad_step': update_step})
-          wandb.log({'{}_historical_dormant_count(post_merging)'.format(layer_name): 
+          wandb.log({'{}_historical_dormant_count(post_merging)'.format(k[14:-13]): 
                      post_hist_dead_count.item(), 'grad_step': update_step})
-          wandb.log({'{}_mean_score_recycled'.format(layer_name): 
+          wandb.log({'{}_mean_score_recycled'.format(k[14:-13]): 
                      jnp.mean(score[prev_mask]), 'grad_step': update_step})
-          wandb.log({'{}_mean_score_nondead'.format(layer_name): 
+          wandb.log({'{}_mean_score_nondead'.format(k[14:-13]): 
                      jnp.mean(score[nondead_mask]), 'grad_step': update_step})
-          wandb.log({'{}_intersected_rate'.format(layer_name): 
+          wandb.log({'{}_intersected_rate'.format(k[14:-13]): 
                      prev_intersect_percent, 'grad_step': update_step})
-          wandb.log({'{}_dormant_percentage'.format(layer_name): 
+          wandb.log({'{}_dormant_percentage'.format(k[14:-13]): 
                      float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
       if self.track:
-        wandb.log({'overall_dormant_percentage': 
+        wandb.log({'overall dormant percentage': 
                   float(total_dead_count) / total_neurons, 'grad_step': update_step})
       self.prev_neuron_score = neuron_score_dict
     return log_dict
@@ -285,7 +285,7 @@ class BaseRecycler:
     return score <= self.dead_neurons_threshold
 
   def log_outgoing_weights_magnitude(self, param_dict, activations_dict, key):
-    """log: # (ZW)
+    """log: # TODO (ZW)
     1. magnitude of dormant neurons's outgoing_weights (in each layer)
     2. magnitude of the rest neurons' outgoing_weights in the same layer
     """
@@ -648,7 +648,7 @@ class NeuronRecycler(BaseRecycler):
         continue
       # for key in param_dict.keys():
       #   print(key, k)
-      param_key = k + '/kernel'
+      param_key = k + '/kernel' # TODO needs to be specified for each algo (if using different network architectures)
       param = param_dict[param_key]
       # This won't work for DRQ, since returned keys can be a list.
       # We don't support that at the moment.
@@ -680,7 +680,8 @@ class NeuronRecycler(BaseRecycler):
           key, subkey = random.split(key)
           outgoing_random_keys_dict[next_param_key] = subkey
 
-        if self.prune_dormant_neurons:
+        if self.prune_dormant_neurons: # NOTE (ZW) stop the gradients flowing through dormant neurons
+          # NOTE (ZW) Log the magnitude of outgoing weights of dormant neurons
           print('Pruning {} outgoing weights at layer {}'.format(outgoing_mask.sum(), k))
 
       # reset bias

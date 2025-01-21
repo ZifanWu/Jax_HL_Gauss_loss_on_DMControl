@@ -32,9 +32,9 @@ def update(key: PRNGKey, actor: Model, critic: Model, temp: Model,
         dist = actor.apply({'params': actor_params}, batch.observations)
         actions = dist.sample(seed=key)
         log_probs = dist.log_prob(actions)
-        q1, q2 = critic(batch.observations, actions)
+        q1, q2 = critic(batch.observations, actions) # (B, n_logits)
         q = jnp.minimum(q1, q2)
-        actor_loss = (log_probs * temp() - q).mean()
+        actor_loss = (log_probs[:, None].repeat(q.shape[1], axis=-1) * temp() - q).mean()
         return actor_loss, {
             'actor_loss': actor_loss,
             'entropy': -log_probs.mean(),

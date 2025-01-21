@@ -15,20 +15,24 @@ def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
     return target_critic.replace(params=new_target_params)
 
 
-def update(key: PRNGKey, actor: Model, critic: Model, target_critic: Model,
+def update(sigma: float, key: PRNGKey, actor: Model, critic: Model, target_critic: Model,
            temp: Model, batch: Batch, discount: float,
            soft_critic: bool) -> Tuple[Model, InfoDict]:
     dist = actor(batch.next_observations)
     next_actions = dist.sample(seed=key)
     next_log_probs = dist.log_prob(next_actions)
-    next_qs = target_critic(batch.next_observations, next_actions) # (2, B)
+    next_qs = target_critic(batch.next_observations, next_actions) # (2, B, n_logits)
     next_q1, next_q2 = next_qs[0], next_qs[1]
-    next_q = jnp.minimum(next_q1, next_q2)
+    next_q = jnp.minimum(next_q1, next_q2) # (B, n_logits)
 
-    target_q = batch.rewards + discount * batch.masks * next_q
+    target_q = batch.rewards[:, None].repeat(next_q.shape[1], axis=-1) + discount * batch.masks[:, None].repeat(next_q.shape[1], axis=-1) * next_q
 
     if soft_critic:
-        target_q -= discount * batch.masks * temp() * next_log_probs
+        target_q -= discount * batch.masks[:, None].repeat(next_q.shape[1], axis=-1) * temp() * next_log_probs[:, None].repeat(next_q.shape[1], axis=-1)
+
+    # NOTE add Gaussian noise to the target
+    key, noise_key = jax.random.split(key)
+    target_q += jax.random.normal(noise_key, target_q.shape) * sigma
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
         critic_fn = lambda actions: critic.apply({'params': critic_params}, 

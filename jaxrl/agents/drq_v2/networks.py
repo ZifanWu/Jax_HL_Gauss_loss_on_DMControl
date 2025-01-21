@@ -9,7 +9,7 @@ tfd = tfp.distributions
 
 from jaxrl.networks.common import default_init
 from jaxrl.networks.critic_net import DoubleCritic, ActivationTrackDoubleDistributionalCritic, DistributionalCritic, ActivationTrackDoubleCritic
-from jaxrl.networks.policies import NormalTanhPolicy, NormalTanhDeterministicPolicy
+from jaxrl.networks.policies import NormalTanhPolicy, NormalTanhDeterministicPolicy, MSEPolicy, NormalTanhPolicywithScheduledStd
 
 
 class IdentityLayer(nn.Module):
@@ -24,12 +24,13 @@ class Encoder(nn.Module):
     features: Sequence[int] = (32, 32, 32, 32)
     strides: Sequence[int] = (2, 1, 1, 1)
     padding: str = 'VALID'
+    m_05: bool = False
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray) -> jnp.ndarray:
         assert len(self.features) == len(self.strides)
 
-        x = observations.astype(jnp.float32) / 255.0
+        x = observations.astype(jnp.float32) / 255.0 - self.m_05 * 0.5 # NOTE
         layer_count = 0
         for features, stride in zip(self.features, self.strides):
             layer = nn.Conv(features,
@@ -135,8 +136,7 @@ class DrQPolicy(nn.Module):
         x = nn.LayerNorm()(x)
         x = nn.tanh(x)
 
-        return NormalTanhPolicy(self.hidden_dims, self.action_dim)(x,
-                                                                   temperature)
+        return NormalTanhPolicy(self.hidden_dims, self.action_dim)(x, temperature)
 
 
 class DrQv2Policy(nn.Module):
@@ -147,6 +147,45 @@ class DrQv2Policy(nn.Module):
     @nn.compact
     def __call__(self,
                  encodings: jnp.ndarray,
+                 stddev: float) -> tfd.Distribution:
+
+        # We do not update conv layers with policy gradients.
+        x = jax.lax.stop_gradient(encodings)
+
+        x = nn.Dense(self.latent_dim)(x)
+        x = nn.LayerNorm()(x)
+        x = nn.tanh(x)
+
+        return NormalTanhDeterministicPolicy(self.hidden_dims, self.action_dim)(x, stddev)
+
+class DrQv2MSEPolicy(nn.Module):
+    hidden_dims: Sequence[int]
+    action_dim: int
+    latent_dim: int = 50
+
+    @nn.compact
+    def __call__(self,
+                 encodings: jnp.ndarray,
+                 stddev: float) -> tfd.Distribution:
+
+        # We do not update conv layers with policy gradients.
+        x = jax.lax.stop_gradient(encodings)
+
+        x = nn.Dense(self.latent_dim)(x)
+        x = nn.LayerNorm()(x)
+        x = nn.tanh(x)
+
+        return MSEPolicy(self.hidden_dims, self.action_dim)(x)
+    
+class DrQv2MultiVariatePolicy(nn.Module):
+    hidden_dims: Sequence[int]
+    action_dim: int
+    latent_dim: int = 50
+
+    @nn.compact
+    def __call__(self,
+                 encodings: jnp.ndarray,
+                 stddev: float,
                  temperature: float = 1.0) -> tfd.Distribution:
 
         # We do not update conv layers with policy gradients.
@@ -156,4 +195,4 @@ class DrQv2Policy(nn.Module):
         x = nn.LayerNorm()(x)
         x = nn.tanh(x)
 
-        return NormalTanhDeterministicPolicy(self.hidden_dims, self.action_dim)(x)
+        return NormalTanhPolicywithScheduledStd(self.hidden_dims, self.action_dim)(x, stddev, temperature=temperature)

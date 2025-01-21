@@ -5,14 +5,14 @@ import gym
 import numpy as np
 
 
-def evaluate(discount, agent, env: gym.Env, num_episodes: int) -> Dict[str, float]:
+def evaluate(discount, agent, env: gym.Env, num_episodes: int, msepolicy: bool = False) -> Dict[str, float]:
     stats = {'return': [], 'length': [], 'oracle_q': []}
     successes = None
     for e in range(num_episodes):
         observation, done = env.reset(), False
         stats['oracle_q'].append([])
         while not done:
-            action = agent.sample_actions(observation, temperature=0.0)
+            action = agent.sample_actions(observation, temperature=0.0) if not msepolicy else agent.sample_ddpg_actions(observation, temperature=0.0)
             observation, reward, done, info = env.step(action)
             stats['oracle_q'][e].append(reward)
         for k in stats.keys():

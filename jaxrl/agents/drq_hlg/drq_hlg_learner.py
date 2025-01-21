@@ -7,27 +7,31 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import flax
 
 from jaxrl.agents.drq.augmentations import batched_random_crop
-from jaxrl.agents.drq.networks import DrQDistributionalDoubleCritic, DrQDistributionalSingleCritic, DrQPolicy
+from jaxrl.agents.drq.networks import ActivationTrackDrQDistributionalDoubleCritic, DrQDistributionalSingleCritic, DrQPolicy
 from jaxrl.agents.sac import temperature
 from jaxrl.agents.sac.critic import target_update
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt, ModelDecoupleOptwithBN, ModelwithBN
+from jaxrl.agents.drq_hlg import weight_recyclers
+from jaxrl.utils import schedule
 
 
 # MIN_VALUE = 0
 # MAX_VALUE = 100 # 1+0.99+0.99**2+...+0.99**1000=100
 
 @functools.partial(jax.jit, 
-                   static_argnames=('update_target', 'n_logits', 'sigma', 'batch_size', 'double_q', 'use_entropy'))
+                   static_argnames=('update_target', 'n_logits', 'sigma', 'batch_size', 'double_q', \
+                                    'use_entropy', 'probs_MSE', 'value_MSE'))
 def _update_jit(
     n_logits: int, sigma: float, batch_size: int, double_q: bool, use_entropy: bool,
     min_value: float, max_value: float,
     rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
     temp: Model, batch: Batch, discount: float, tau: float,
-    target_entropy: float, update_target: bool
+    target_entropy: float, update_target: bool, probs_MSE: bool, value_MSE: bool
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
 
     rng, key = jax.random.split(rng)
@@ -39,8 +43,6 @@ def _update_jit(
     def transform_to_probs(target): # (B,)
         target = jnp.clip(target, min_value, max_value)
         # print(target.shape, support.shape) # (512) (B, n_logits+1)
-        import time
-        time.sleep(2)
         cdf_evals = jax.scipy.special.erf((support - target[:, None]) / (jnp.sqrt(2) * sigma)) # (B, n_logits+1)
         z = cdf_evals[:, -1] - cdf_evals[:, 0] # (B,)
         bin_probs = cdf_evals[:, 1:] - cdf_evals[:, :-1] # (B, n_logits)
@@ -73,7 +75,9 @@ def _update_jit(
                                             temp,
                                             batch,
                                             discount,
-                                            backup_entropy=True)
+                                            soft_critic=True,
+                                            probs_MSE=probs_MSE,
+                                            value_MSE=value_MSE)
     if update_target:
         new_target_critic = target_update(new_critic, target_critic, tau)
     else:
@@ -82,6 +86,8 @@ def _update_jit(
     # Use critic conv layers in actor:
     new_actor_params = actor.params.copy(
         add_or_replace={'SharedEncoder': new_critic.params['SharedEncoder']})
+    # new_actor_batch_stats = actor.batch_stats.copy(
+    #     add_or_replace={'batch_stats': new_critic.batch_stats})
     actor = actor.replace(params=new_actor_params)
 
     rng, key = jax.random.split(rng)
@@ -103,8 +109,18 @@ class DrQHLGaussianLearner(object):
 
     def __init__(self,
                  seed: int,
+                 track: bool,
+                 replay_buffer,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 probs_MSE: bool = False,
+                 value_MSE: bool = False,
+                 use_layer_norm_in_critic: bool = False,
+                 use_batch_norm: bool = False,
+                 use_weight_decay_in_critic: bool = False,
+                 WD_rate: float = 0.001,
+                 redo: bool = False,
+                 reset_interval: int = 200_000,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -112,10 +128,15 @@ class DrQHLGaussianLearner(object):
                  sigma: float=1.5,
                  min_value: float = 0.,
                  max_value: float = 100.,
+                 max_value_schedule: str = 'linear(10,100,500000)',
                  batch_size: int=256,
+                 batch_size_statistics: int = 256,
+                 dead_neurons_thresholds: Sequence[float] = [0., 0.025, 0.1],
+                 dormancy_logging_period: int = 2_000,
                  double_q: bool = True,
                  use_entropy: bool = True,
-                 hidden_dims: Sequence[int] = (256, 256),
+                 actor_hidden_dims: Sequence[int] = (256, 256),
+                 critic_hidden_dims: Sequence[int] = (256, 256),
                  cnn_features: Sequence[int] = (32, 32, 32, 32),
                  cnn_strides: Sequence[int] = (2, 1, 1, 1),
                  cnn_padding: str = 'VALID',
@@ -140,25 +161,48 @@ class DrQHLGaussianLearner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
-        actor_def = DrQPolicy(hidden_dims, action_dim, cnn_features,
-                              cnn_strides, cnn_padding, latent_dim)
-        actor = Model.create(actor_def,
-                             inputs=[actor_key, observations],
-                             tx=optax.adam(learning_rate=actor_lr))
+        actor_def = DrQPolicy(actor_hidden_dims, action_dim, cnn_features,
+                              cnn_strides, cnn_padding, latent_dim, use_batch_norm=use_batch_norm)
+        if use_batch_norm:
+            actor = ModelwithBN.create(actor_def,
+                                inputs=[actor_key, observations],
+                                tx=optax.adam(learning_rate=actor_lr))
+        else:
+            actor = Model.create(actor_def,
+                                inputs=[actor_key, observations],
+                                tx=optax.adam(learning_rate=actor_lr))
 
         if double_q:
-            critic_def = DrQDistributionalDoubleCritic(hidden_dims, n_logits, cnn_features, 
-                                                    cnn_strides, cnn_padding, latent_dim)
+            critic_def = ActivationTrackDrQDistributionalDoubleCritic(critic_hidden_dims, n_logits, cnn_features, 
+                                                                    cnn_strides, cnn_padding, latent_dim, 
+                                                                    use_layer_norm=use_layer_norm_in_critic,
+                                                                    use_batch_norm=use_batch_norm)
         else:
-            critic_def = DrQDistributionalSingleCritic(hidden_dims, n_logits, cnn_features, 
-                                                    cnn_strides, cnn_padding, latent_dim)
+            critic_def = ActivationTrackDrQDistributionalDoubleCritic(critic_hidden_dims, n_logits, cnn_features, 
+                                                    cnn_strides, cnn_padding, latent_dim, num_qs=1)
         # critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
         #                              cnn_padding, latent_dim)
-        critic = Model.create(critic_def,
-                              inputs=[critic_key, observations, actions],
-                              tx=optax.adam(learning_rate=critic_lr))
-        target_critic = Model.create(
-            critic_def, inputs=[critic_key, observations, actions])
+        # critic = Model.create(critic_def,
+        #                       inputs=[critic_key, observations, actions],
+        #                       tx=optax.adam(learning_rate=critic_lr))
+        if use_weight_decay_in_critic:
+            optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
+        else:
+            optimizer = optax.adam(learning_rate=critic_lr)
+        if use_batch_norm:
+            critic = ModelDecoupleOptwithBN.create(critic_def,
+                                                    inputs=[critic_key, observations, actions],
+                                                    tx=optimizer,
+                                                    tx_enc=optimizer)
+            target_critic = ModelwithBN.create(
+                critic_def, inputs=[critic_key, observations, actions])
+        else:
+            critic = ModelDecoupleOpt.create(critic_def,
+                                            inputs=[critic_key, observations, actions],
+                                            tx=optimizer,
+                                            tx_enc=optimizer)
+            target_critic = Model.create(
+                critic_def, inputs=[critic_key, observations, actions])
 
         temp = Model.create(temperature.Temperature(init_temperature),
                             inputs=[temp_key],
@@ -171,6 +215,46 @@ class DrQHLGaussianLearner(object):
         self.use_entropy = use_entropy
         self.min_value = min_value
         self.max_value = max_value
+        self.use_batch_norm = use_batch_norm
+        self.probs_MSE = probs_MSE
+        self.value_MSE = value_MSE
+
+        def get_layer_list(model: Model) -> list[str]:
+            param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
+            layer_list = list(param_dict.keys())
+            # print(1111, layer_list)
+            layer_list = [l[l.find('/')+1:l.rfind('/')] for l in layer_list]
+            # print(2222, layer_list)
+            layer_list = list(dict.fromkeys(layer_list))
+            # print(3333, layer_list)
+            # layer_list = [l for l in layer_list if 'final' not in l and l != '']
+            layer_list = [l for l in layer_list if 'dense' in l]
+            print(4444, layer_list)
+            return layer_list
+
+        critic_layer_list = get_layer_list(critic)
+        actor_layer_list = get_layer_list(actor)
+        # if redo:
+        #     self.critic_weight_recycler = weight_recyclers.NeuronRecycler(critic_layer_list, 
+        #                                                                   track, 
+        #                                                                   dead_neurons_threshold, 
+        #                                                                   dormancy_logging_period=dormancy_logging_period, 
+        #                                                                   prune_dormant_neurons=False, 
+        #                                                                   reset_period=reset_interval)
+        # else:
+        self.critic_weight_recycler = weight_recyclers.BaseRecycler(critic_layer_list, 
+                                                                    track=track, 
+                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                    dormancy_logging_period=dormancy_logging_period)
+        self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
+                                                                    track, 
+                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                    dormancy_logging_period=dormancy_logging_period, 
+                                                                    )
+
+        self.replay_buffer = replay_buffer
+        self.batch_size_statistics = batch_size_statistics
+        self.redo = redo
 
         self.actor = actor
         self.critic = critic
@@ -179,26 +263,107 @@ class DrQHLGaussianLearner(object):
         self.rng = rng
         self.step = 0
 
+        self.schedule = functools.partial(schedule, schdl=max_value_schedule)
+
     def sample_actions(self,
                        observations: np.ndarray,
                        temperature: float = 1.0) -> jnp.ndarray:
+        batch_stats = self.actor.batch_stats if self.use_batch_norm else None
         rng, actions = policies.sample_actions(self.rng, self.actor.apply_fn,
                                                self.actor.params, observations,
-                                               temperature)
+                                               temperature, use_batch_norm=self.use_batch_norm,
+                                               batch_stats=batch_stats)
 
         self.rng = rng
 
         actions = np.asarray(actions)
         return np.clip(actions, -1, 1)
+    
+    def get_critic_intermediates(self, network, online_params):
+        batch = self.replay_buffer.sample(self.batch_size_statistics)
+        def filter_rep(l, _):
+            return (l.name is not None and 
+                    ('_act' in l.name or '_preact' in l.name))
+        _, state = network.apply(
+            {'params': online_params},
+            batch.observations,
+            batch.actions,
+            capture_intermediates=filter_rep,#lambda l, _: l.name is not None and 'act' in l.name,
+            mutable=['intermediates'],
+        )
+        # return state['intermediates']
+        intermediates = state['intermediates']
+        intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
+        # print(3424, intermediates.keys())#['SharedEncoder', 'dense-1_layernorm_tanh_preact', 'dense-1_layernorm_tanh_act', 'CriticHead']
+        # print(432, intermediates['CriticHead'].keys())['critic0', 'critic1']
+        # print(3242, intermediates['CriticHead']['critic0'].keys())
+        # import time
+        # time.sleep(222)
+        activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
+        preactivations = {k: v for k, v in intermediates.items() if '_preact' in k and 'conv' not in k}
+
+        return activations, preactivations
+    
+    def get_actor_intermediates(self, network, online_params):
+        batch = self.replay_buffer.sample(self.batch_size_statistics)
+        def filter_rep(l, _):
+            return (l.name is not None and 
+                    ('_act' in l.name or '_preact' in l.name))
+        _, state = network.apply(
+            {'params': online_params},
+            batch.observations,
+            capture_intermediates=filter_rep,#lambda l, _: l.name is not None and 'act' in l.name,
+            mutable=['intermediates'],
+        )
+        # return state['intermediates']
+        intermediates = state['intermediates']
+        intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
+        activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
+        preactivations = {k: v for k, v in intermediates.items() if '_preact' in k and 'conv' not in k}
+
+        return activations, preactivations
 
     def update(self, batch: Batch) -> InfoDict:
         self.step += 1
+
+        max_value = self.schedule(step=self.step)
+        self.max_value = max_value
+
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
             self.n_logits, self.sigma, self.batch_size, self.double_q, self.use_entropy,
             self.min_value, self.max_value,
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
-            self.step % self.target_update_period == 0)
+            self.step % self.target_update_period == 0, self.probs_MSE, self.value_MSE)
+        
+        is_intermediated = self.critic_weight_recycler.is_intermediated_required(self.step-1)
+        critic_intermediates, critic_preacts = (
+            self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
+        )
+        self.critic_weight_recycler.maybe_log_deadneurons(
+            self.step-1, critic_intermediates, critic_preacts, new_critic.params
+        ) # step-1: we log the first step's deadneurons
+        actor_intermediates, actor_preacts = (
+            self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None, )
+        )
+        self.actor_weight_recycler.maybe_log_deadneurons(
+            self.step-1, actor_intermediates, actor_preacts, new_actor.params
+        )
+
+        # self.rng = new_rng
+        # if self.redo:
+        #     self.rng, key = jax.random.split(self.rng)
+        #     redone_enc_params, redone_enc_opt_state = self.critic_weight_recycler.maybe_update_weights(
+        #         self.step, critic_intermediates['SharedEncoder'], new_critic.params['SharedEncoder'], key, new_critic.opt_state_enc
+        #     )
+        #     redone_critichead_params, redone_critichead_opt_state = self.critic_weight_recycler.maybe_update_weights(
+        #         self.step, critic_intermediates['CriticHead'], new_critic.params['criticHead'], key, new_critic.opt_state_head
+        #     )
+        #     new_params = flax.core.unfreeze(new_critic.params)
+        #     new_params['SharedEncoder'], new_params['CriticHead'] = redone_enc_params, redone_critichead_params
+        #     new_critic = new_critic.replace(params=flax.core.freeze(new_params), 
+        #                                     opt_state_enc=redone_enc_opt_state,
+        #                                     opt_state_head=redone_critichead_opt_state)
 
         self.rng = new_rng
         self.actor = new_actor
