@@ -18,7 +18,7 @@ from jaxrl.networks.common import InfoDict, Model, PRNGKey
 
 
 @functools.partial(jax.jit,
-                   static_argnames=('backup_entropy', 'update_target'))
+                   static_argnames=('update_target'))
 def _update_jit(
     rng: PRNGKey, actor: Model, critic: Model, target_critic: Model,
     temp: Model, batch: Batch, discount: float, tau: float,

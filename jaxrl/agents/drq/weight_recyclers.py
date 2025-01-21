@@ -264,16 +264,16 @@ class BaseRecycler:
   def is_update_iter(self, step):
     return step > 0 and (step % self.reset_period == 0)
 
-  def update_weights(self, intermediates, params, key, opt_state):
+  def update_weights(self, intermediates, params, key, opt_state, update_step):
     raise NotImplementedError
 
   def maybe_update_weights(
-      self, update_step, intermediates, params, key, opt_state
+      self, update_step, intermediates, params, key, opt_state,
   ):
     self._last_update_step = update_step
     if self.is_reset(update_step):
       new_params, new_opt_state = self.update_weights(
-          intermediates, params, key, opt_state
+          intermediates, params, key, opt_state, update_step
       )
     else:
       new_params, new_opt_state = params, opt_state
@@ -362,27 +362,27 @@ class BaseRecycler:
 
         layer_name = k[k.find('/')+1:k.rfind('/')-4]
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
-          wandb.log({'{}_mean_activation'.format(layer_name): jnp.mean(activation), 'grad_step': update_step})
-          wandb.log({'{}_mean_preactivation'.format(layer_name): jnp.mean(preactivation), 'grad_step': update_step})
+          wandb.log({'{}_mean_activation'.format(layer_name): jnp.mean(activation).tolist(), 'grad_step': update_step})
+          wandb.log({'{}_mean_preactivation'.format(layer_name): jnp.mean(preactivation).tolist(), 'grad_step': update_step})
           # wandb.log({'{}_std_preactivation'.format(layer_name): jnp.std(preactivation), 'grad_step': update_step})
 
           # we want to check if the preactivation distribution within a layer is some Gaussian, 
           # so we check if quantiles matches the theoretical quantiles of the Gaussian with that mean and that std
           cdf_diff = check_normality(preactivation)
-          wandb.log({'{}_cdf_difference'.format(layer_name): cdf_diff, 'grad_step': update_step})
+          wandb.log({'{}_cdf_difference'.format(layer_name): cdf_diff.tolist(), 'grad_step': update_step})
           # q = jnp.array([0.25, 0.5, 0.75])
           # quantiles = jnp.quantile(jnp.mean(preactivation, axis=0), q) # (q.shape)
           quantiles = compute_quantiles(jnp.mean(preactivation, axis=0), jnp.array([0.25, 0.5, 0.75]))
-          wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0], 'grad_step': update_step})
-          wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1], 'grad_step': update_step})
-          wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2], 'grad_step': update_step})
+          wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2].tolist(), 'grad_step': update_step})
         thres_idx = 0
         for curr_mask, prev_mask, curr_nondead_mask in zip(curr_masks, prev_masks, curr_nondead_masks):
           if ('critic0' in k or 'actor' in k) and 'dense0' in k:
             dense0_dormancy_masks.append(curr_mask.copy())
           prev_intersect = curr_mask & prev_mask
-          prev_intersect_count = jnp.count_nonzero(prev_intersect)
-          prev_count = jnp.count_nonzero(prev_mask)
+          prev_intersect_count = jnp.count_nonzero(prev_intersect).tolist()
+          prev_count = jnp.count_nonzero(prev_mask).tolist()
 
           if k not in self.historical_dormant_mask.keys(): # first log
             self.historical_dormant_mask[k] = prev_mask # non-dormant entries: False
@@ -391,10 +391,10 @@ class BaseRecycler:
           self.historical_dormant_mask[k] = (self.historical_dormant_mask[k]) | (curr_mask) # NOTE (ZW) merging the current dormant set into the historical set
 
           intersected_mask = (self.historical_dormant_mask[k]) & (curr_mask)
-          intersected_count = jnp.count_nonzero(intersected_mask)
-          curr_dead_count = jnp.count_nonzero(curr_mask)
+          intersected_count = jnp.count_nonzero(intersected_mask).tolist()
+          curr_dead_count = jnp.count_nonzero(curr_mask).tolist()
           # hist_dead_count = jnp.count_nonzero(self.historical_dormant_mask[k])
-          post_hist_dead_count = jnp.count_nonzero(self.historical_dormant_mask[k])
+          post_hist_dead_count = jnp.count_nonzero(self.historical_dormant_mask[k]).tolist()
           denominator = post_hist_dead_count # This implements the post-merging-set-as-denominator metric
           # denominator = max(curr_dead_count, hist_dead_count) # This implements the max-pre-merging-set-as-denominator metric
 
@@ -417,28 +417,28 @@ class BaseRecycler:
             wandb.log({'{}_{}_dead_intersected_percent'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): prev_intersect_percent, 'grad_step': update_step})
             wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
 
-            wandb.log({'{}_{}_mean_activation_recycled'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[prev_mask]), 'grad_step': update_step})
-            wandb.log({'{}_{}_mean_activation_nondead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[curr_nondead_mask]), 'grad_step': update_step})
-            wandb.log({'{}_{}_mean_activation_dead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[curr_mask]), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_activation_recycled'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[prev_mask]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_activation_nondead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[curr_nondead_mask]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_activation_dead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[curr_mask]).tolist(), 'grad_step': update_step})
 
-            wandb.log({'{}_{}_mean_preactivation_recycled'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, prev_mask]), 'grad_step': update_step})
-            wandb.log({'{}_{}_mean_preactivation_nondead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, curr_nondead_mask]), 'grad_step': update_step})
-            wandb.log({'{}_{}_mean_preactivation_dead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, curr_mask]), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_preactivation_recycled'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, prev_mask]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_preactivation_nondead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, curr_nondead_mask]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_{}_mean_preactivation_dead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(preactivation[:, curr_mask]).tolist(), 'grad_step': update_step})
           thres_idx += 1
         # log top activations
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
           top3_values, top3_indices, _ = topK_and_leastKM_elements(activation, 3)
           dense_top3_indices.append(top3_indices)
-          wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0], 'grad_step': update_step})
-          wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1], 'grad_step': update_step})
-          wandb.log({'{}_top3_activation'.format(layer_name): top3_values[2], 'grad_step': update_step})
-          wandb.log({'{}_top1_idx'.format(layer_name): top3_indices[0], 'grad_step': update_step})
-          wandb.log({'{}_top2_idx'.format(layer_name): top3_indices[1], 'grad_step': update_step})
-          wandb.log({'{}_top3_idx'.format(layer_name): top3_indices[2], 'grad_step': update_step})
+          wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_top3_activation'.format(layer_name): top3_values[2].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_top1_idx'.format(layer_name): top3_indices[0].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_top2_idx'.format(layer_name): top3_indices[1].tolist(), 'grad_step': update_step})
+          wandb.log({'{}_top3_idx'.format(layer_name): top3_indices[2].tolist(), 'grad_step': update_step})
           sum_acti = jnp.sum(activation)
-          wandb.log({'{}_mean_excluding_top1_activation'.format(layer_name): (sum_acti-top3_values[0])/(jnp.size(activation)-1), 'grad_step': update_step})
-          wandb.log({'{}_mean_excluding_top2_activation'.format(layer_name): (sum_acti-top3_values[0]-top3_values[1])/(jnp.size(activation)-2), 'grad_step': update_step})
-          wandb.log({'{}_mean_excluding_top3_activation'.format(layer_name): (sum_acti-top3_values.sum())/(jnp.size(activation)-3), 'grad_step': update_step})
+          wandb.log({'{}_mean_excluding_top1_activation'.format(layer_name): ((sum_acti-top3_values[0])/(jnp.size(activation)-1)).tolist(), 'grad_step': update_step})
+          wandb.log({'{}_mean_excluding_top2_activation'.format(layer_name): ((sum_acti-top3_values[0]-top3_values[1])/(jnp.size(activation)-2)).tolist(), 'grad_step': update_step})
+          wandb.log({'{}_mean_excluding_top3_activation'.format(layer_name): ((sum_acti-top3_values.sum())/(jnp.size(activation)-3)).tolist(), 'grad_step': update_step})
 
       # log weights
       if self.track and self.historical_dormant_mask is not None:
@@ -448,24 +448,24 @@ class BaseRecycler:
             param_key = k + '/kernel'
             bias_key = k + '/bias'
             abs_param = jnp.abs(param_dict[param_key]) # (8, 8, 4, 32)(4, 4, 32, 64)(3, 3, 64, 64)(7744, 512)(512, 6)
-            wandb.log({'{}_w_mean'.format(k): abs_param.mean(), 'grad_step': update_step})
+            wandb.log({'{}_w_mean'.format(k): abs_param.mean().tolist(), 'grad_step': update_step})
             quantiles = compute_quantiles(abs_param, jnp.array([0.25, 0.5, 0.75]))
-            wandb.log({'{}_w_1qt'.format(k): quantiles[0], 'grad_step': update_step})
-            wandb.log({'{}_w_2qt'.format(k): quantiles[1], 'grad_step': update_step})
-            wandb.log({'{}_w_3qt'.format(k): quantiles[2], 'grad_step': update_step})
-            wandb.log({'{}_top1_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[0]]), 'grad_step': update_step})
-            wandb.log({'{}_top2_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[1]]), 'grad_step': update_step})
-            wandb.log({'{}_top3_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[2]]), 'grad_step': update_step})
+            wandb.log({'{}_w_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
+            wandb.log({'{}_w_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
+            wandb.log({'{}_w_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
+            wandb.log({'{}_top1_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[0]]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_top2_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[1]]).tolist(), 'grad_step': update_step})
+            wandb.log({'{}_top3_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[2]]).tolist(), 'grad_step': update_step})
             if ('critic0' in k or 'actor' in k) and 'dense1' in k:
               for idx, dormancy_mask in enumerate(dense0_dormancy_masks):
-                wandb.log({'Dense_0_{}_dormant_out_w_mean'.format(self.dead_neurons_thresholds[idx]): jnp.mean(abs_param[dormancy_mask].mean()), 'grad_step': update_step})
+                wandb.log({'Dense_0_{}_dormant_out_w_mean'.format(self.dead_neurons_thresholds[idx]): jnp.mean(abs_param[dormancy_mask].mean()).tolist(), 'grad_step': update_step})
             
             abs_bias = jnp.abs(param_dict[bias_key])
-            wandb.log({'{}_b_mean'.format(k): abs_bias.mean(), 'grad_step': update_step})
+            wandb.log({'{}_b_mean'.format(k): abs_bias.mean().tolist(), 'grad_step': update_step})
             quantiles = compute_quantiles(abs_bias, jnp.array([0.25, 0.5, 0.75]))
-            wandb.log({'{}_b_1qt'.format(k): quantiles[0], 'grad_step': update_step})
-            wandb.log({'{}_b_2qt'.format(k): quantiles[1], 'grad_step': update_step})
-            wandb.log({'{}_b_3qt'.format(k): quantiles[2], 'grad_step': update_step})
+            wandb.log({'{}_b_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
+            wandb.log({'{}_b_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
+            wandb.log({'{}_b_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
         
       # layer_name = k[k.find('/')+1:k.rfind('/')-4]
       self.prev_neuron_score = neuron_score_dict
@@ -541,7 +541,7 @@ class NeuronRecycler(BaseRecycler):
     self.outgoing_scale = outgoing_scale
     self.prune_dormant_neurons = prune_dormant_neurons
     self.neutralize_dormant_neurons = neutralize_dormant_neurons
-    self.dead_thres = dead_thres
+    self.dead_thres, self.mass_thres = dead_thres, mass_thres
     self.weight_revive_eps = weight_revive_eps
     self.NO_K_mass_thres = NO_K_mass_thres
     self.ntrlize_thres = ntrlize_thres
@@ -584,14 +584,14 @@ class NeuronRecycler(BaseRecycler):
     self.reset_layers = self.all_layers_names[reset_start_layer_idx:]
     self.reset_layers = self.reset_layers[:-1]
 
-  def update_weights(self, intermediates, params, key, opt_state):
+  def update_weights(self, intermediates, params, key, opt_state, update_step):
     if self.prune_dormant_neurons:
       new_param = self.prune_dead_neurons(
           intermediates, params, key, opt_state
       )
     elif self.neutralize_dormant_neurons:
       new_param, opt_state = self.neutralize_massive_and_dead_neurons(
-          intermediates, params, key, opt_state
+          intermediates, params, key, opt_state, update_step
       )
     else:
       new_param, opt_state = self.recycle_dead_neurons(
@@ -770,7 +770,7 @@ class NeuronRecycler(BaseRecycler):
     ) = self.create_masks(param_dict, activations_score_dict, key)
     return params
 
-  def neutralize_massive_and_dead_neurons(self, intermedieates, params, key, opt_state):
+  def neutralize_massive_and_dead_neurons(self, intermedieates, params, key, opt_state, update_step):
     """Recycle dead neurons by reinitalizie incoming and outgoing connections.
 
     Incoming connections are randomly initalized and outgoing connections
@@ -799,7 +799,7 @@ class NeuronRecycler(BaseRecycler):
         param_dict, 
         dead_incoming_mask_dict, 
         dead_outgoing_mask_dict
-    ) = self.create_dead_mass_masks(param_dict, activations_score_dict, key)
+    ) = self.create_dead_mass_masks(param_dict, activations_score_dict, key, update_step)
 
     params = flax.core.freeze(
         flax.traverse_util.unflatten_dict(param_dict, sep='/')
@@ -917,7 +917,7 @@ class NeuronRecycler(BaseRecycler):
         param_dict,
     )
     
-  def create_dead_mass_masks(self, param_dict, activations_dict, key):
+  def create_dead_mass_masks(self, param_dict, activations_dict, key, update_step):
     """create the masks for recycled weights based on neurons scores.
 
     Args:
@@ -950,19 +950,43 @@ class NeuronRecycler(BaseRecycler):
 
       activation = activations_dict[k + '_act/__call__'][0]
       score = self.estimate_neuron_score(activation)
-      top_K_values, _, indices = topK_and_leastKM_elements(score, self.K)
-      
-      # determine M (how many dead neurons will be assigned to each massive neuron)
-      M = top_K_values[-1].astype(int)
-      if M < max(2, self.ntrlize_thres): # the massive neuron shouldn't be below the threshold
-        continue
-      else:
-        n_death = jnp.count_nonzero(score <= self.dead_thres)
-        if n_death >= self.K * (M-1):
+      # Determine massive neurons by threshold
+      indices = sort_array(score)
+      n_mass = jnp.count_nonzero(score >= max(2, self.mass_thres)).tolist()
+      self.K = n_mass
+      top_K_values = score[indices[:self.K]]
+      n_death = jnp.count_nonzero(score <= self.dead_thres).tolist()
+      if self.NO_K_mass_thres:
+        M = top_K_values[-1].astype(int)
+        needed_n_death = self.K * (M-1)
+        if n_death >= needed_n_death:
           least_KM_indices = indices[-self.K * (M-1):]
         else: # when the number of dead neurons are not sufficient to divide the massive neuron into 1
           least_KM_indices = indices[-n_death:]
           M = n_death // self.K + 1
+      else:
+        needed_n_death = top_K_values.astype(int).sum() - self.K
+        if n_death >= needed_n_death:
+          least_KM_indices = indices[-needed_n_death:]
+        else:
+          least_KM_indices = indices[-n_death:]
+          M = n_death // self.K + 1
+
+      # Determine massive neurons by a pre-set number self.K
+      # top_K_values, _, indices = topK_and_leastKM_elements(score, self.K)
+      # if top_K_values[0] < max(2, self.ntrlize_thres): # the biggest massive neuron shouldn't be below the threshold
+      #   continue
+      # else:
+      #   n_mass = jnp.count_nonzero(top_K_values >= max(2, self.ntrlize_thres))
+      #   self.K = n_mass if self.K > n_mass else self.K
+      #   n_death = jnp.count_nonzero(score <= self.dead_thres)
+      #   needed_n_death = self.K * (M-1)
+      #   if n_death >= needed_n_death:
+      #     M = top_K_values[-1].astype(int) # No.K neuron's score
+      #     least_KM_indices = indices[-needed_n_death:]
+      #   else: # when the number of dead neurons are not sufficient to divide the massive neuron into 1
+      #     least_KM_indices = indices[-n_death:]
+      #     M = n_death // self.K + 1
 
       dead_neuron_mask = jnp.zeros_like(score)
       dead_neuron_mask = dead_neuron_mask.at[least_KM_indices].set(1)
@@ -972,12 +996,16 @@ class NeuronRecycler(BaseRecycler):
       )
       dead_incoming_mask_dict[param_key] = dead_incoming_mask
       dead_outgoing_mask_dict[next_param_key] = dead_outgoing_mask
-      
-      mass_thres = M # No.K neuron's score
+
+      layer_name = k[k.find('/')+1:]
+      if self.track:
+        wandb.log({'{}_n_mass'.format(layer_name): n_mass, 'grad_step': update_step})
+        wandb.log({'{}_n_death'.format(layer_name): n_death, 'grad_step': update_step})
+        wandb.log({'{}_needed_n_death'.format(layer_name): needed_n_death.tolist(), 'grad_step': update_step})
       
       for K in range(self.K):
-        if not self.NO_K_mass_thres:
-          mass_thres = top_K_values[K].astype(int)
+        if not self.NO_K_mass_thres and n_death >= needed_n_death:
+          M = top_K_values[K].astype(int)
         mass_neuron_mask = jnp.zeros_like(score)
         mass_neuron_mask = mass_neuron_mask.at[indices[K]].set(1)
         mass_neuron_mask = mass_neuron_mask != 0
@@ -986,17 +1014,17 @@ class NeuronRecycler(BaseRecycler):
         )
         # reset incoming weights of massive neurons
         weight_shrink_fn = jax.jit(
-          functools.partial(weight_shrink, k=mass_thres)
+          functools.partial(weight_shrink, k=M)
         )
         shrinked_param = weight_shrink_fn(param, mass_incoming_mask)
 
         # reset incoming weights of dead neurons
         weight_revive_fn = jax.jit(
-            functools.partial(weight_revive, eps=self.weight_revive_eps, k=mass_thres)
+            functools.partial(weight_revive, eps=self.weight_revive_eps, k=M)
         )
         key, subkey = random.split(key)
-        revive_indices = jax.random.choice(subkey, least_KM_indices, shape=(M-1,), replace=False)
-        least_KM_indices = jnp.array([i for i in least_KM_indices if i not in revive_indices])
+        revive_indices = least_KM_indices[-(M-1):]
+        least_KM_indices = least_KM_indices[:-(M-1)]
         dead_neuron_mask = jnp.zeros_like(score)
         dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
         dead_neuron_mask = dead_neuron_mask != 0
@@ -1014,7 +1042,7 @@ class NeuronRecycler(BaseRecycler):
         # reset bias
         bias_key = k + '/bias'
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
-        new_bias = mass_bias / mass_thres
+        new_bias = mass_bias / M
         param_dict[bias_key] = jnp.where(
             dead_neuron_mask, new_bias, param_dict[bias_key]
         )

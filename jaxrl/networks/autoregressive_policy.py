@@ -22,7 +22,7 @@ class MaskType(enum.Enum):
 
 @jax.util.cache()
 def get_mask(input_dim: int, output_dim: int, randvar_dim: int,
-             mask_type: MaskType) -> jnp.DeviceArray:
+             mask_type: MaskType) -> jax.Array:
     """
     Create a mask for MADE.
 

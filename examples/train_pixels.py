@@ -18,7 +18,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'cheetah-run', 'Environment name.')
 flags.DEFINE_integer('cuda_num', 0, 'cuda number')
-flags.DEFINE_string('save_dir', '/scratch/general/vast/$USER/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', '~/scratch/general/vast/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -278,16 +278,16 @@ def main(_):
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
                     summary_writer.add_scalar(f'training/{k}', v, i)
-                    wandb.log({f'training/{k}': v, 'global_step': i})
-                summary_writer.flush()
+                    wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
+                # summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
             eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes, FLAGS.msepolicy)
 
             for k, v in eval_stats.items():
-                summary_writer.add_scalar(f'evaluation/average_{k}s', v,
+                summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
                                           info['total']['timesteps'])
-                wandb.log({f'evaluation/average_{k}s': v, 'global_step':  i})
+                wandb.log({f'evaluation/average_{k}s': v.tolist(), 'global_step':  i})
             summary_writer.flush()
 
             eval_returns.append(
@@ -339,7 +339,8 @@ def main(_):
                 agent.encoder = old_encoder
 
 if __name__ == '__main__':
-    # os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.5'
+    # os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.1'
+    # os.environ['XLA_FLAGS'] = '--xla_gpu_force_compilation_parallelism=1'
     os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] ='false'
     os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'

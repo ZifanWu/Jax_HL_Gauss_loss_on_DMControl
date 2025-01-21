@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import optax
 
 def tree_norm(tree):
-    return jnp.sqrt(sum((x**2).sum() for x in jax.tree_leaves(tree)))
+    return jnp.sqrt(sum((x**2).sum() for x in jax.tree.leaves(tree)))
 
 def default_init(scale: Optional[float] = jnp.sqrt(2)):
     return nn.initializers.orthogonal(scale)
@@ -56,7 +56,8 @@ class Model:
                tx: Optional[optax.GradientTransformation] = None) -> 'Model':
         variables = model_def.init(*inputs)
 
-        _, params = variables.pop('params')
+        params = variables.pop('params')
+        params = flax.core.FrozenDict(params)
 
         if tx is not None:
             opt_state = tx.init(params)
@@ -191,7 +192,8 @@ class ModelDecoupleOpt:
                tx_enc: Optional[optax.GradientTransformation] = None) -> 'ModelDecoupleOpt':
         variables = model_def.init(*inputs)
 
-        _, params = variables.pop('params')
+        params = variables.pop('params')
+        params = flax.core.FrozenDict(params)
 
         if tx is not None:
             if tx_enc is None:
@@ -223,7 +225,7 @@ class ModelDecoupleOpt:
         info['grad_norm'] = grad_norm
 
         params_enc, params_head = split_tree(self.params, 'SharedEncoder')
-        grads_enc, grads_head = split_tree(grads, 'SharedEncoder')
+        grads_enc, grads_head = split_tree(flax.core.FrozenDict(grads), 'SharedEncoder')
         
         updates_enc, new_opt_state_enc = self.tx_enc.update(grads_enc, self.opt_state_enc,
                                                             params_enc)
