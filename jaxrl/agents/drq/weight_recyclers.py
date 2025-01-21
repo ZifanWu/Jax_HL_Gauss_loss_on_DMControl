@@ -953,6 +953,8 @@ class NeuronRecycler(BaseRecycler):
       # Determine massive neurons by threshold
       indices = sort_array(score)
       n_mass = jnp.count_nonzero(score >= max(2, self.mass_thres)).tolist()
+      if n_mass < 1:
+        continue
       self.K = n_mass
       top_K_values = score[indices[:self.K]]
       n_death = jnp.count_nonzero(score <= self.dead_thres).tolist()
