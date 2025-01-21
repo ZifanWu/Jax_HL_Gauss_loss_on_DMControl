@@ -291,7 +291,7 @@ class BaseRecycler:
 
   def maybe_log_deadneurons(self, update_step, intermediates, preactivations, params):
     is_logging = self.is_logging_step(update_step)
-    if is_logging: # TODO debugging
+    if True:#is_logging: # TODO debugging
       self.log_historical_dead_neuron_overlapping(intermediates, preactivations, params, update_step)
   
   def _compute_mask(self, score_dict):
@@ -400,7 +400,7 @@ class BaseRecycler:
 
           # self.historical_dormant_mask[k] = (self.historical_dormant_mask[k]) | (curr_mask)
           percent = (
-              (float(intersected_count) / denominator.item())
+              (float(intersected_count) / denominator)
               if denominator
               else 0.0
           )
@@ -412,8 +412,8 @@ class BaseRecycler:
 
           if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
             wandb.log({'{}_{}_historical_overlap_rate'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): percent, 'grad_step': update_step})
-            wandb.log({'{}_{}_current_historical_ratio(pre_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): (curr_dead_count / pre_hist_dead_count), 'grad_step': update_step})
-            wandb.log({'{}_{}_historical_dormant_count(post_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): post_hist_dead_count, 'grad_step': update_step})
+            # wandb.log({'{}_{}_current_historical_ratio(pre_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): (curr_dead_count / pre_hist_dead_count), 'grad_step': update_step})
+            # wandb.log({'{}_{}_historical_dormant_count(post_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): post_hist_dead_count, 'grad_step': update_step})
             wandb.log({'{}_{}_dead_intersected_percent'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): prev_intersect_percent, 'grad_step': update_step})
             wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
 
@@ -578,7 +578,7 @@ class NeuronRecycler(BaseRecycler):
   def is_intermediated_required(self, update_step):
     is_logging = self.is_logging_step(update_step)
     is_update_iter = self.is_update_iter(update_step)
-    return is_logging or is_update_iter # TODO debugging
+    return True#is_logging or is_update_iter # TODO debugging
 
   def update_reset_layers(self, reset_start_layer_idx):
     self.reset_layers = self.all_layers_names[reset_start_layer_idx:]
