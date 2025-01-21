@@ -955,6 +955,8 @@ class NeuronRecycler(BaseRecycler):
       # Determine massive neurons by threshold
       indices = sort_array(score)
       n_mass = jnp.count_nonzero(score >= max(2, self.mass_thres))
+      if n_mass < 1:
+        continue
       self.K = n_mass
       top_K_values = score[indices[:self.K]]
       n_death = jnp.count_nonzero(score <= self.dead_thres)
@@ -1008,9 +1010,6 @@ class NeuronRecycler(BaseRecycler):
       for K in range(self.K):
         if not self.NO_K_mass_thres and n_death >= needed_n_death:
           M = top_K_values[K].astype(int)
-        print(self.K, K, M, needed_n_death)
-        import time
-        time.sleep(0.1)
         mass_neuron_mask = jnp.zeros_like(score)
         mass_neuron_mask = mass_neuron_mask.at[indices[K]].set(1)
         mass_neuron_mask = mass_neuron_mask != 0
@@ -1028,8 +1027,8 @@ class NeuronRecycler(BaseRecycler):
             functools.partial(weight_revive, eps=self.weight_revive_eps, k=M)
         )
         key, subkey = random.split(key)
-        revive_indices = jax.random.choice(subkey, least_KM_indices, shape=(M-1,), replace=False)
-        least_KM_indices = jnp.array([i for i in least_KM_indices if i not in revive_indices])
+        revive_indices = least_KM_indices[-(M-1):]
+        least_KM_indices = least_KM_indices[:-(M-1)]
         dead_neuron_mask = jnp.zeros_like(score)
         dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
         dead_neuron_mask = dead_neuron_mask != 0
