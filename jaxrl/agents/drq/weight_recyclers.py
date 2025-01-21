@@ -387,7 +387,7 @@ class BaseRecycler:
           if k not in self.historical_dormant_mask.keys(): # first log
             self.historical_dormant_mask[k] = prev_mask # non-dormant entries: False
 
-          pre_hist_dead_count = jnp.count_nonzero(self.historical_dormant_mask[k])
+          pre_hist_dead_count = jnp.count_nonzero(self.historical_dormant_mask[k]).tolist()
           self.historical_dormant_mask[k] = (self.historical_dormant_mask[k]) | (curr_mask) # NOTE (ZW) merging the current dormant set into the historical set
 
           intersected_mask = (self.historical_dormant_mask[k]) & (curr_mask)
@@ -412,8 +412,8 @@ class BaseRecycler:
 
           if self.track and 'dense' in k and ('critic0' in k or 'actor' in k):
             wandb.log({'{}_{}_historical_overlap_rate'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): percent, 'grad_step': update_step})
-            wandb.log({'{}_{}_current_historical_ratio(pre_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): (curr_dead_count / pre_hist_dead_count).item(), 'grad_step': update_step})
-            wandb.log({'{}_{}_historical_dormant_count(post_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): post_hist_dead_count.item(), 'grad_step': update_step})
+            wandb.log({'{}_{}_current_historical_ratio(pre_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): (curr_dead_count / pre_hist_dead_count), 'grad_step': update_step})
+            wandb.log({'{}_{}_historical_dormant_count(post_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): post_hist_dead_count, 'grad_step': update_step})
             wandb.log({'{}_{}_dead_intersected_percent'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): prev_intersect_percent, 'grad_step': update_step})
             wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
 
