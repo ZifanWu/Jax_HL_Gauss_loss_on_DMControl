@@ -18,7 +18,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'cheetah-run', 'Environment name.')
 flags.DEFINE_integer('cuda_num', 0, 'cuda number')
-flags.DEFINE_string('save_dir', '~/scratch/general/vast/$USER/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', '../../scratch/general/vast/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -30,7 +30,6 @@ flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in th
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_integer('reset_start_step', int(1e4), 'Reset time interval')
-# flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
 flags.DEFINE_boolean('multivariate_normalpolicy', False, 'Whether to use a multivariate_normal policy.')
@@ -263,8 +262,8 @@ def main(_):
         if done:
             observation, done = env.reset(), False
             for k, v in info['episode'].items():
-                summary_writer.add_scalar(f'training/{k}', v,
-                                          info['total']['timesteps'])
+                # summary_writer.add_scalar(f'training/{k}', v,
+                #                           info['total']['timesteps'])
                 wandb.log({f'training/{k}': v, 'global_step': i})
 
         if i >= FLAGS.start_training:
@@ -277,7 +276,7 @@ def main(_):
 
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
-                    summary_writer.add_scalar(f'training/{k}', v, i)
+                    # summary_writer.add_scalar(f'training/{k}', v, i)
                     wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
                 # summary_writer.flush()
 
@@ -285,14 +284,14 @@ def main(_):
             eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes, FLAGS.msepolicy)
 
             for k, v in eval_stats.items():
-                summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
-                                          info['total']['timesteps'])
+                # summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
+                #                           info['total']['timesteps'])
                 wandb.log({f'evaluation/average_{k}s': v.tolist(), 'global_step':  i})
-            summary_writer.flush()
+            # summary_writer.flush()
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, seed: {}, alg: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
+            print('env: {}, seed: {}, alg: {}, frame: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
                                                                    info['total']['timesteps'], 
                                                                    eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
