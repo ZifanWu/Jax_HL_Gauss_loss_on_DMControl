@@ -9,10 +9,6 @@ from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 import socket
 
-from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner
-from jaxrl.datasets import ReplayBuffer, NStepReplayBuffer
-from jaxrl.evaluation import evaluate
-from jaxrl.utils import make_env
 
 FLAGS = flags.FLAGS
 
@@ -106,7 +102,13 @@ def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
 
 
 def main(_):
-    # os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.cuda_num)
+    os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.cuda_num
+    print('using cuda {}'.format(FLAGS.cuda_num))    
+    import jax
+    from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner
+    from jaxrl.datasets import ReplayBuffer, NStepReplayBuffer
+    from jaxrl.evaluation import evaluate
+    from jaxrl.utils import make_env
     settings = []
     kwargs = dict(FLAGS.config)
     if FLAGS.index is not None:
