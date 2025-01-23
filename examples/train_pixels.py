@@ -30,6 +30,10 @@ flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in th
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_integer('reset_start_step', int(1e4), 'Reset time interval')
+flags.DEFINE_boolean('reset_mass_opt_state', False, 'Whether to reset the optimizer state of massive neurons')
+flags.DEFINE_boolean('scale_mu', False, 'Whether to scale or reset to 0 mu of the optimizer state of massive neurons.')
+flags.DEFINE_boolean('scale_nu', False, 'Whether to scale or reset to 0 nu of the optimizer state of massive neurons.')
+
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
 flags.DEFINE_boolean('multivariate_normalpolicy', False, 'Whether to use a multivariate_normal policy.')
@@ -216,8 +220,9 @@ def main(_):
     def create_new_agent(env, buffer):
         if algo == 'drq':
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons,
-                            env.observation_space.sample()[np.newaxis],
-                            env.action_space.sample()[np.newaxis], FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
+                               FLAGS.reset_mass_opt_state, FLAGS.scale_mu, FLAGS.scale_nu,
+                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                               FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         elif algo == 'drq_v2':
             agent = DrQv2Learner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
                                  FLAGS.msepolicy, FLAGS.multivariate_normalpolicy,
