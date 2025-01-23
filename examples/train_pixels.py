@@ -13,7 +13,7 @@ import socket
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'cheetah-run', 'Environment name.')
-flags.DEFINE_integer('cuda_num', 0, 'cuda number')
+flags.DEFINE_string('cuda_num', '0', 'cuda number')
 flags.DEFINE_string('save_dir', '../../scratch/general/vast/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
