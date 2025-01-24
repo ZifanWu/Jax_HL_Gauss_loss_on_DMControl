@@ -29,6 +29,7 @@ flags.DEFINE_integer('reset_start_step', int(1e4), 'Reset time interval')
 flags.DEFINE_boolean('reset_mass_opt_state', False, 'Whether to reset the optimizer state of massive neurons')
 flags.DEFINE_boolean('scale_mu', False, 'Whether to scale or reset to 0 mu of the optimizer state of massive neurons.')
 flags.DEFINE_boolean('scale_nu', False, 'Whether to scale or reset to 0 nu of the optimizer state of massive neurons.')
+flags.DEFINE_boolean('prune_dormant_neurons', False, 'Whether to prune dormant neurons')
 
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
@@ -222,7 +223,7 @@ def main(_):
     def create_new_agent(env, buffer):
         if algo == 'drq':
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons,
-                               FLAGS.reset_mass_opt_state, FLAGS.scale_mu, FLAGS.scale_nu,
+                               FLAGS.reset_mass_opt_state, FLAGS.scale_mu, FLAGS.scale_nu, FLAGS.prune_dormant_neurons,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         elif algo == 'drq_v2':

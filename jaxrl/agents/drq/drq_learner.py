@@ -81,6 +81,7 @@ class DrQLearner(object):
                  reset_mass_opt_state: bool,
                  scale_mu: bool,
                  scale_nu: bool,
+                 prune_dormant_neurons: bool,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  reset_interval: int,
@@ -196,7 +197,8 @@ class DrQLearner(object):
                                                                         ntrlize_thres=ntrlize_thres,
                                                                         reset_mass_opt_state=reset_mass_opt_state,
                                                                         scale_mu=scale_mu,
-                                                                        scale_nu=scale_nu)
+                                                                        scale_nu=scale_nu,
+                                                                        prune_dormant_neurons=prune_dormant_neurons)
             self.critic2_weight_recycler = weight_recyclers.NeuronRecycler(critic2_layer_list, 
                                                                         track=track, 
                                                                         reset_period=reset_interval,
@@ -211,7 +213,8 @@ class DrQLearner(object):
                                                                         ntrlize_thres=ntrlize_thres,
                                                                         reset_mass_opt_state=reset_mass_opt_state,
                                                                         scale_mu=scale_mu,
-                                                                        scale_nu=scale_nu)
+                                                                        scale_nu=scale_nu,
+                                                                        prune_dormant_neurons=prune_dormant_neurons)
         else:
             self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
                                                                         track=track, 
