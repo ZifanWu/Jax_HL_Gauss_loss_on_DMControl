@@ -218,7 +218,7 @@ class ModelDecoupleOpt:
     def apply(self, *args, **kwargs):
         return self.apply_fn.apply(*args, **kwargs)
 
-    def apply_gradient(self, loss_fn) -> Tuple[Any, 'Model']:
+    def apply_gradient(self, loss_fn, pruner=None) -> Tuple[Any, 'Model']:
         grad_fn = jax.grad(loss_fn, has_aux=True)
         grads, info = grad_fn(self.params)
         grad_norm = tree_norm(grads)
@@ -234,6 +234,8 @@ class ModelDecoupleOpt:
         updates_head, new_opt_state_head = self.tx.update(grads_head, self.opt_state_head,
                                                           params_head)
         new_params_head = optax.apply_updates(params_head, updates_head)
+        if pruner is not None:
+            new_params_head = pruner.post_gradient_update(new_params_head, new_opt_state_head)
 
         new_params = flax.core.FrozenDict({**new_params_head, 'SharedEncoder': new_params_enc})
         return self.replace(step=self.step + 1,

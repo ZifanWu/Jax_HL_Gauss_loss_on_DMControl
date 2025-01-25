@@ -11,3 +11,4 @@ from jaxrl.agents.sequential_sac.sequential_sac_learner import SequentialSACLear
 from jaxrl.agents.sequential_sac_hlg.sequential_sac_hlg_learner import SequentialSACHLGLearner
 from jaxrl.agents.sac_noisy_critictarget.sac_noisy_critictarget_learner import SACNoisyCriticLearner
 from jaxrl.agents.drq_v2.drqv2_learner import DrQv2Learner
+from jaxrl.agents.drq_weight_pruning.drq_wp_learner import DrQWPLearner
