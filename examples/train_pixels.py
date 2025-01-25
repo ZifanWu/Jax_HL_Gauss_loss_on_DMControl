@@ -29,7 +29,7 @@ flags.DEFINE_boolean('redo_critic', False, 'Whether to redo dormant neurons in t
 flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in the actor head periodically.')
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
-flags.DEFINE_integer('reset_start_step', int(1e4), 'Reset time interval')
+flags.DEFINE_integer('reset_start_step', int(1), 'Reset time interval')
 # flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
@@ -113,12 +113,13 @@ def main(_):
         #           ('hopper-hop', (2048, 2048), 0.01, 100, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 200, 1, 4),
         #           ('hopper-hop', (2048, 2048), 0.01, 400, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 100, 1, 2)
         #           ]:
-        for i in ['acrobot-swingup', 'quadruped-walk', 'quadruped-run', 'finger-turn_hard']:
+        for i in ['acrobot-swingup', 'quadruped-walk', 'quadruped-run', 'reacher-hard', 'hopper-hop', 'walker-run']:
             for j in [True]:
                 for k in [1000]: # TODO test RR scaling
-                    for l in [1, 3, 10]:
-                        for m in [0.01, 0.003]:
-                            for n in [True, False]:
+                    for l in [2, 10]:
+                        for m in [0.1]:
+                            for n in [True]:
+                                for p in [0.01, 0, 0.05]:
                     # for l in [0.025, 0]:
             # for k in [2, 4, 8]:
                 # for k in [1e-4, 1e-3, 1e-2]:
@@ -129,11 +130,11 @@ def main(_):
                 # for l in [True, False]:
             # for k in ['linear(1.0,0.1,500000)', 'linear(0.2,0.2,500000)']:
             # settings.append(i)
-                                settings.append([i,j,j,k,l,m,n])
+                                    settings.append([i,j,j,k,l,m,n,p])
         setting_for_this_idx = settings[int(FLAGS.index)]
         FLAGS.env_name, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons, \
-        FLAGS.reset_interval, FLAGS.config['K'], FLAGS.config['weight_revive_eps'],\
-        FLAGS.config['NO_K_mass_thres'] = setting_for_this_idx
+        FLAGS.reset_interval, FLAGS.config['mass_thres'], FLAGS.config['dead_thres'],\
+        FLAGS.config['NO_K_mass_thres'], FLAGS.config['weight_revive_eps'] = setting_for_this_idx
         # FLAGS.env_name, FLAGS.config['critic_hidden_dims'],\
         # FLAGS.config['WD_rate'], FLAGS.config['n_logits'], FLAGS.config['n_step_trgt'],\
         # FLAGS.updates_per_step = setting_for_this_idx
