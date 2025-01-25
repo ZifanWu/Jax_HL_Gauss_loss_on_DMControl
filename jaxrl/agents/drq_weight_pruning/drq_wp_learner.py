@@ -70,27 +70,16 @@ def _update_jit(
     }
 
 
-class DrQLearner(object):
+class DrQWPLearner(object):
 
     def __init__(self,
                  seed: int,
                  track: bool,
                  replay_buffer,
-                 redo: bool,
-                 neutralize_dormant_neurons: bool,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
-                 ntrlize_thres: float = 2.,
-                 NO_K_mass_thres: bool = True,
-                 reset_mass_opt_state: bool = True,
-                 weight_scaling: bool = False,
-                 incoming_scale: float = 10.0,
-                 K: int = 5,
-                 mass_thres: float = 10.,
-                 dead_thres: float = 0.1,
-                 weight_revive_eps: float = 0.01,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -156,12 +145,6 @@ class DrQLearner(object):
         self.step = 0
 
         import flax
-        # param_dict = flax.traverse_util.flatten_dict(critic.params, sep='/')
-        # layer_list = list(param_dict.keys())
-        # layer_list = [l[l.find('/')+1:l.rfind('/')] for l in layer_list]
-        # reset_layer_list = list(dict.fromkeys(layer_list))
-        # reset_layer_list = [l for l in reset_layer_list if 'final' not in l and l != '']
-        # reset_layer_list = reset_layer_list[reset_start_layer_idx:]
         def get_layer_list(model: Model) -> list[str]:
             param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
             layer_list = list(param_dict.keys())
@@ -179,40 +162,11 @@ class DrQLearner(object):
         actor_layer_list = get_layer_list(actor)
         critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l]
         critic2_layer_list = [l for l in critic_layer_list if 'critic1' in l]
-        if redo:
-            self.critic1_weight_recycler = weight_recyclers.NeuronRecycler(critic1_layer_list, 
-                                                                        track=track,
-                                                                        reset_period=reset_interval,
-                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                        dormancy_logging_period=dormancy_logging_period,
-                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
-                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
-                                                                        weight_revive_eps=weight_revive_eps,
-                                                                        K=K,
-                                                                        reset_start_step=reset_start_step,
-                                                                        NO_K_mass_thres=NO_K_mass_thres,
-                                                                        ntrlize_thres=ntrlize_thres)
-            self.critic2_weight_recycler = weight_recyclers.NeuronRecycler(critic2_layer_list, 
-                                                                        track=track, 
-                                                                        reset_period=reset_interval,
-                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                        dormancy_logging_period=dormancy_logging_period,
-                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
-                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
-                                                                        weight_revive_eps=weight_revive_eps,
-                                                                        K=K,
-                                                                        reset_start_step=reset_start_step,
-                                                                        NO_K_mass_thres=NO_K_mass_thres,
-                                                                        ntrlize_thres=ntrlize_thres)
-        else:
-            self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
-                                                                        track=track, 
-                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                        dormancy_logging_period=dormancy_logging_period)
-            # self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
-            #                                                             track=track, 
-            #                                                             dead_neurons_thresholds=dead_neurons_thresholds, 
-            #                                                             dormancy_logging_period=dormancy_logging_period)
+        
+        self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
+                                                                    track=track, 
+                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                    dormancy_logging_period=dormancy_logging_period)
         self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
                                                                     track, 
                                                                     dead_neurons_thresholds=dead_neurons_thresholds, 
