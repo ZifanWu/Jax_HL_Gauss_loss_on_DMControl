@@ -25,12 +25,8 @@ flags.DEFINE_boolean('redo_critic', False, 'Whether to redo dormant neurons in t
 flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in the actor head periodically.')
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
-flags.DEFINE_integer('reset_start_step', int(1e4), 'Reset time interval')
-flags.DEFINE_boolean('reset_mass_opt_state', False, 'Whether to reset the optimizer state of massive neurons')
-flags.DEFINE_boolean('scale_mu', False, 'Whether to scale or reset to 0 mu of the optimizer state of massive neurons.')
-flags.DEFINE_boolean('scale_nu', False, 'Whether to scale or reset to 0 nu of the optimizer state of massive neurons.')
-flags.DEFINE_boolean('prune_dormant_neurons', False, 'Whether to prune dormant neurons')
-
+flags.DEFINE_integer('reset_start_step', int(1), 'Reset time interval')
+# flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
 flags.DEFINE_boolean('multivariate_normalpolicy', False, 'Whether to use a multivariate_normal policy.')
@@ -52,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_weight_pruning.py',
+    'configs/drq_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -106,7 +102,7 @@ def main(_):
     os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.cuda_num
     print('using cuda {}'.format(FLAGS.cuda_num))    
     import jax
-    from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner, DrQWPLearner
+    from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner
     from jaxrl.datasets import ReplayBuffer, NStepReplayBuffer
     from jaxrl.evaluation import evaluate
     from jaxrl.utils import make_env
@@ -223,13 +219,8 @@ def main(_):
     def create_new_agent(env, buffer):
         if algo == 'drq':
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons,
-                               FLAGS.reset_mass_opt_state, FLAGS.scale_mu, FLAGS.scale_nu, FLAGS.prune_dormant_neurons,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
-        elif algo == 'drq_weight_pruning':
-            agent = DrQWPLearner(FLAGS.seed, FLAGS.track, buffer,
-                               env.observation_space.sample()[np.newaxis], 
-                               env.action_space.sample()[np.newaxis], **kwargs)
         elif algo == 'drq_v2':
             agent = DrQv2Learner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
                                  FLAGS.msepolicy, FLAGS.multivariate_normalpolicy,
@@ -290,7 +281,7 @@ def main(_):
                 for k, v in update_info.items():
                     summary_writer.add_scalar(f'training/{k}', v, i)
                     wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
-                summary_writer.flush()
+                # summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
             eval_stats = evaluate(config['discount'], agent, eval_env, FLAGS.eval_episodes, FLAGS.msepolicy)
@@ -303,7 +294,7 @@ def main(_):
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, seed: {}, alg: {}, frame: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
+            print('env: {}, seed: {}, alg: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
                                                                    info['total']['timesteps'], 
                                                                    eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),

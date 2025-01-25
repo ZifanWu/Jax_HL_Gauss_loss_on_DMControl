@@ -6,6 +6,8 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.reset_mass_opt_state = False
+    
     config.ntrlize_thres = 2.
     config.NO_K_mass_thres = False
     
