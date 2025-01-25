@@ -65,12 +65,12 @@ def weight_revive(param, next_param, dead_neuron_mask, key,
       dead_neuron_mask, param, next_param
   )
   key, subkey = random.split(key)
-  noise = jax.random.normal(subkey, shape=param) * jnp.abs(param) / eps
+  noise = jax.random.normal(subkey, shape=param) * jnp.abs(param) * eps
   param = jnp.where(
     dead_incoming_mask, new_incoming_param + noise, param
   )
   key, subkey = random.split(key)
-  noise = jax.random.normal(subkey, shape=param) * jnp.abs(param) / eps
+  noise = jax.random.normal(subkey, shape=param) * jnp.abs(param) * eps
   next_param = jnp.where(
     dead_outgoing_mask, new_outgoing_param + noise, next_param
   )
