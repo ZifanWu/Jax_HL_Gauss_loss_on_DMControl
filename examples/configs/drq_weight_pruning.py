@@ -4,20 +4,7 @@ import ml_collections
 def get_config():
     config = ml_collections.ConfigDict()
 
-    config.algo = 'drq'
-    
-    config.reset_mass_opt_state = False
-    
-    config.ntrlize_thres = 2.
-    config.NO_K_mass_thres = False
-    
-    config.weight_scaling = False
-    config.incoming_scale = 1.0
-    
-    config.mass_thres = 10.
-    config.dead_thres = 0.1
-    config.K = 5
-    config.weight_revive_eps = 0.1
+    config.algo = 'drq_weight_pruning'
 
     config.n_step_trgt = 1
 
