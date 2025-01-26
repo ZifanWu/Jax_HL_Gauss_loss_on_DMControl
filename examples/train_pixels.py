@@ -48,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_default.py',
+    'configs/drq_weight_pruning.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -102,7 +102,7 @@ def main(_):
     os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.cuda_num
     print('using cuda {}'.format(FLAGS.cuda_num))    
     import jax
-    from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner
+    from jaxrl.agents import DrQLearner, DrQHLGaussianLearner, DrQv2Learner, DrQWPLearner
     from jaxrl.datasets import ReplayBuffer, NStepReplayBuffer
     from jaxrl.evaluation import evaluate
     from jaxrl.utils import make_env
@@ -221,6 +221,10 @@ def main(_):
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
+        elif algo == 'drq_weight_pruning':
+            agent = DrQWPLearner(FLAGS.seed, FLAGS.track, buffer,
+                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                               **kwargs)
         elif algo == 'drq_v2':
             agent = DrQv2Learner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
                                  FLAGS.msepolicy, FLAGS.multivariate_normalpolicy,

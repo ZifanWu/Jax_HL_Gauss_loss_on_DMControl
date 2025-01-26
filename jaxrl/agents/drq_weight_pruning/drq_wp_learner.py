@@ -27,11 +27,11 @@ import jaxpruner
 from jaxrl.agents.drq_weight_pruning.sparse_util import create_updater_from_config
 
 
-# @functools.partial(jax.jit, static_argnames=('update_target'))
-def _update(
+@functools.partial(jax.jit, static_argnames=('update_target'))
+def _update_jit_fn(
     rng: PRNGKey, actor: Model, critic: ModelDecoupleOpt, target_critic: Model,
     temp: Model, batch: Batch, discount: float, tau: float,
-    target_entropy: float, update_target: bool, pruner=None
+    target_entropy: float, update_target: bool
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, InfoDict]:
 
     rng, key = jax.random.split(rng)
@@ -44,7 +44,6 @@ def _update(
 
     rng, key = jax.random.split(rng)
     new_critic, critic_info = update_critic(key,
-                                            pruner,
                                             actor,
                                             critic,
                                             target_critic,
@@ -128,14 +127,15 @@ class DrQWPLearner(object):
         # critic = Model.create(critic_def,
         #                       inputs=[critic_key, observations, actions],
         #                       tx=optax.adam(learning_rate=critic_lr))
-        # self.pruner = jaxpruner.MagnitudePruning(,
-        #                                     scheduler=jaxpruner.sparsity_schedules.PolynomialSchedule(
-        #                                         update_freq=1000, update_start_step=3e5, update_end_step=12e5)
-        #                                     )
-        self.pruner = create_updater_from_config(rng_seed=pruner_rng)
-        # self.post_gradient_update = jax.jit(self.pruner.post_gradient_update)
+        sparsity_distribution = functools.partial(
+            jaxpruner.sparsity_distributions.uniform, sparsity=0.95)
+        self.pruner = jaxpruner.MagnitudePruning(sparsity_distribution_fn=sparsity_distribution,
+                                                 scheduler=jaxpruner.sparsity_schedules.PolynomialSchedule(
+                                                    update_freq=1000, update_start_step=3e5, update_end_step=12e5)
+                                                )
+        # self.pruner = create_updater_from_config(rng_seed=pruner_rng)
+        self.post_gradient_update = jax.jit(self.pruner.post_gradient_update)
         critic_head_optimizer = self.pruner.wrap_optax(optax.adam(learning_rate=critic_lr))
-        # critic_head_optimizer = self.pruner.wrap_optax(optax.adam(learning_rate=critic_lr))
         # encoder_optimizer = self.pruner.wrap_optax(optax.adam(learning_rate=critic_lr))
 
         critic = ModelDecoupleOpt.create(critic_def,
@@ -246,16 +246,27 @@ class DrQWPLearner(object):
     def update(self, batch: Batch) -> InfoDict:
         self.step += 1
         
-        _update_jit_fn = jax.jit(
-            functools.partial(
-                _update, pruner=self.pruner, update_target=self.step%self.target_update_period == 0
-                )
-            )
+        # _update_jit_fn = jax.jit(
+        #     functools.partial(
+        #         _update, pruner=self.pruner, update_target=self.step%self.target_update_period == 0
+        #         )
+        #     )
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit_fn(
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
-            batch, self.discount, self.tau, self.target_entropy)
+            batch, self.discount, self.tau, self.target_entropy, self.step%self.target_update_period == 0)
         
+        new_critic_params = {}
+        new_critic_params['SharedEncoder'] = new_critic.params['SharedEncoder']
+        new_critichead_params = flax.core.FrozenDict({k: v for k, v in new_critic.params.items() if 'Encoder' not in k})
+
+        new_critichead_params = self.post_gradient_update(new_critichead_params, new_critic.opt_state_head)
+        
+        for k, v in new_critichead_params.items():
+            new_critic_params[k] = v
+
+        new_critic = new_critic.replace(params=flax.core.FrozenDict(new_critic_params))
+
         is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
         critic_intermediates, critic_preacts = (
             self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)

@@ -15,7 +15,7 @@ from jaxrl.agents.sac import temperature
 from jaxrl.agents.sac.critic import target_update
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt, ModelDecoupleOptwithBN, ModelwithBN
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
 from jaxrl.agents.drq_hlg import weight_recyclers
 from jaxrl.utils import schedule
 
@@ -163,14 +163,10 @@ class DrQHLGaussianLearner(object):
 
         actor_def = DrQPolicy(actor_hidden_dims, action_dim, cnn_features,
                               cnn_strides, cnn_padding, latent_dim, use_batch_norm=use_batch_norm)
-        if use_batch_norm:
-            actor = ModelwithBN.create(actor_def,
-                                inputs=[actor_key, observations],
-                                tx=optax.adam(learning_rate=actor_lr))
-        else:
-            actor = Model.create(actor_def,
-                                inputs=[actor_key, observations],
-                                tx=optax.adam(learning_rate=actor_lr))
+        
+        actor = Model.create(actor_def,
+                            inputs=[actor_key, observations],
+                            tx=optax.adam(learning_rate=actor_lr))
 
         if double_q:
             critic_def = ActivationTrackDrQDistributionalDoubleCritic(critic_hidden_dims, n_logits, cnn_features, 
@@ -189,20 +185,13 @@ class DrQHLGaussianLearner(object):
             optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
         else:
             optimizer = optax.adam(learning_rate=critic_lr)
-        if use_batch_norm:
-            critic = ModelDecoupleOptwithBN.create(critic_def,
-                                                    inputs=[critic_key, observations, actions],
-                                                    tx=optimizer,
-                                                    tx_enc=optimizer)
-            target_critic = ModelwithBN.create(
-                critic_def, inputs=[critic_key, observations, actions])
-        else:
-            critic = ModelDecoupleOpt.create(critic_def,
-                                            inputs=[critic_key, observations, actions],
-                                            tx=optimizer,
-                                            tx_enc=optimizer)
-            target_critic = Model.create(
-                critic_def, inputs=[critic_key, observations, actions])
+        
+        critic = ModelDecoupleOpt.create(critic_def,
+                                        inputs=[critic_key, observations, actions],
+                                        tx=optimizer,
+                                        tx_enc=optimizer)
+        target_critic = Model.create(
+            critic_def, inputs=[critic_key, observations, actions])
 
         temp = Model.create(temperature.Temperature(init_temperature),
                             inputs=[temp_key],

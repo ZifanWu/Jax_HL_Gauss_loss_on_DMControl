@@ -17,7 +17,7 @@ def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
     return target_critic.replace(params=new_target_params)
 
 
-def update(key: PRNGKey, pruner, actor: Model, critic: ModelDecoupleOpt, target_critic: Model,
+def update(key: PRNGKey, actor: Model, critic: ModelDecoupleOpt, target_critic: Model,
            temp: Model, batch: Batch, discount: float,
            soft_critic: bool) -> Tuple[Model, InfoDict]:
     dist = actor(batch.next_observations)
@@ -53,7 +53,7 @@ def update(key: PRNGKey, pruner, actor: Model, critic: ModelDecoupleOpt, target_
             'critic_agnorm': jnp.sqrt((action_grad ** 2).sum(-1)).mean(0)
         }
 
-    new_critic, info = critic.apply_gradient(critic_loss_fn, pruner)
+    new_critic, info = critic.apply_gradient(critic_loss_fn)
     info['critic_gnorm'] = info.pop('grad_norm')
 
     return new_critic, info
