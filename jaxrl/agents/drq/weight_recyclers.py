@@ -307,7 +307,7 @@ class BaseRecycler:
 
   def maybe_log_deadneurons(self, update_step, intermediates, preactivations, params):
     is_logging = self.is_logging_step(update_step)
-    if True:#is_logging: # TODO debugging
+    if is_logging: # TODO debugging
       self.log_historical_dead_neuron_overlapping(intermediates, preactivations, params, update_step)
   
   def _compute_mask(self, score_dict):
@@ -598,7 +598,7 @@ class NeuronRecycler(BaseRecycler):
   def is_intermediated_required(self, update_step):
     is_logging = self.is_logging_step(update_step)
     is_update_iter = self.is_update_iter(update_step)
-    return True#is_logging or is_update_iter # TODO debugging
+    return is_logging or is_update_iter # TODO debugging
 
   def update_reset_layers(self, reset_start_layer_idx):
     self.reset_layers = self.all_layers_names[reset_start_layer_idx:]
