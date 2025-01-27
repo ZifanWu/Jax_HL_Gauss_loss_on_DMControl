@@ -271,7 +271,7 @@ def main(_):
             for k, v in info['episode'].items():
                 summary_writer.add_scalar(f'training/{k}', v,
                                           info['total']['timesteps'])
-                wandb.log({f'training/{k}': v, 'global_step': i})
+                wandb.log({f'training/{k}': v, 'frame': info['total']['timesteps']})
 
         if i >= FLAGS.start_training:
             # batch = replay_buffer.sample(int(config['batch_size']))
@@ -293,12 +293,12 @@ def main(_):
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
                                           info['total']['timesteps'])
-                wandb.log({f'evaluation/average_{k}s': v.tolist(), 'global_step':  i})
+                wandb.log({f'evaluation/average_{k}s': v.tolist(), 'frame':  info['total']['timesteps']})
             summary_writer.flush()
 
             eval_returns.append(
                 (info['total']['timesteps'], eval_stats['return']))
-            print('env: {}, seed: {}, alg: {}, step: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
+            print('env: {}, seed: {}, alg: {}, frame: {}, return: {}'.format(FLAGS.env_name, FLAGS.seed, config['algo'],
                                                                    info['total']['timesteps'], 
                                                                    eval_stats['return']))
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
