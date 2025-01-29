@@ -34,7 +34,7 @@ flags.DEFINE_boolean('m_05', False, 'Whether to use a multivariate_normal policy
 
 flags.DEFINE_integer('update_freq', 1, 'Update the agent every _ env steps.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
-flags.DEFINE_integer('max_steps', int(1e7), 'Number of environment steps.')
+flags.DEFINE_integer('max_steps', int(3e6), 'Number of environment steps.')
 flags.DEFINE_integer('start_training', int(2e3),
                      'Number of environment steps to start training.')
 flags.DEFINE_integer(

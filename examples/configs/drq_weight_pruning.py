@@ -5,6 +5,9 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     config.algo = 'drq_weight_pruning'
+    
+    config.prune_start_step = 4e5
+    config.prune_end_step = 16e5
 
     config.n_step_trgt = 1
 

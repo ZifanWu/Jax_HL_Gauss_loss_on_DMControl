@@ -81,6 +81,8 @@ class DrQWPLearner(object):
                  replay_buffer,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 prune_start_step: int = 4e5,
+                 prune_end_step: int = 16e5,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -131,7 +133,7 @@ class DrQWPLearner(object):
             jaxpruner.sparsity_distributions.uniform, sparsity=0.95)
         self.pruner = jaxpruner.MagnitudePruning(sparsity_distribution_fn=sparsity_distribution,
                                                  scheduler=jaxpruner.sparsity_schedules.PolynomialSchedule(
-                                                    update_freq=1000, update_start_step=3e5, update_end_step=12e5)
+                                                    update_freq=1000, update_start_step=prune_start_step, update_end_step=prune_end_step)
                                                 )
         # self.pruner = create_updater_from_config(rng_seed=pruner_rng)
         self.post_gradient_update = jax.jit(self.pruner.post_gradient_update)
