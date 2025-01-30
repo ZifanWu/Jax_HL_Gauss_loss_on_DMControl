@@ -14,7 +14,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'cheetah-run', 'Environment name.')
 flags.DEFINE_string('cuda_num', '0', 'cuda number')
-flags.DEFINE_string('save_dir', '../../scratch/general/vast/$USER/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', '/scratch/general/vast/$USER/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -34,7 +34,7 @@ flags.DEFINE_boolean('m_05', False, 'Whether to use a multivariate_normal policy
 
 flags.DEFINE_integer('update_freq', 1, 'Update the agent every _ env steps.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
-flags.DEFINE_integer('max_steps', int(4e6), 'Number of environment steps.')
+flags.DEFINE_integer('max_steps', int(2e6), 'Number of environment steps.')
 flags.DEFINE_integer('start_training', int(2e3),
                      'Number of environment steps to start training.')
 flags.DEFINE_integer(
@@ -48,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_weight_pruning.py',
+    'configs/drq_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -115,12 +115,13 @@ def main(_):
         #           ('hopper-hop', (2048, 2048), 0.01, 100, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 200, 1, 4),
         #           ('hopper-hop', (2048, 2048), 0.01, 400, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 100, 1, 2)
         #           ]:
-        for i in ['acrobot-swingup', 'quadruped-walk', 'quadruped-run', 'finger-turn_hard']:
+        for i in ['pendulum-swingup', 'finger-turn_hard', 'finger-turn_easy']:
             for j in [True]:
-                for k in [1000]: # TODO test RR scaling
-                    for l in [1, 3, 10]:
-                        for m in [0.01, 0.003]:
-                            for n in [True, False]:
+                for k in [1000]:
+                    for m in [0.01, 0.1]:
+                        for n in [True]:
+                            for p in [10, 2]:
+                                for q in [0.1, 0.03]:
                     # for l in [0.025, 0]:
             # for k in [2, 4, 8]:
                 # for k in [1e-4, 1e-3, 1e-2]:
@@ -131,11 +132,11 @@ def main(_):
                 # for l in [True, False]:
             # for k in ['linear(1.0,0.1,500000)', 'linear(0.2,0.2,500000)']:
             # settings.append(i)
-                                settings.append([i,j,j,k,l,m,n])
+                                    settings.append([i,j,j,k,m,n, p, q])
         setting_for_this_idx = settings[int(FLAGS.index)]
         FLAGS.env_name, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons, \
-        FLAGS.reset_interval, FLAGS.config['K'], FLAGS.config['weight_revive_eps'],\
-        FLAGS.config['NO_K_mass_thres'] = setting_for_this_idx
+        FLAGS.reset_interval, FLAGS.config['weight_revive_eps'],\
+        FLAGS.config['NO_K_mass_thres'], FLAGS.config['mass_thres'], FLAGS.config['dead_thres'] = setting_for_this_idx
         # FLAGS.env_name, FLAGS.config['critic_hidden_dims'],\
         # FLAGS.config['WD_rate'], FLAGS.config['n_logits'], FLAGS.config['n_step_trgt'],\
         # FLAGS.updates_per_step = setting_for_this_idx

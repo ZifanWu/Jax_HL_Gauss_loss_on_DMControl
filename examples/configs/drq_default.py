@@ -16,7 +16,7 @@ def get_config():
     
     config.mass_thres = 10.
     config.dead_thres = 0.1
-    config.K = 1000000
+    config.K = 10
     config.weight_revive_eps = 0.01
 
     config.n_step_trgt = 1
