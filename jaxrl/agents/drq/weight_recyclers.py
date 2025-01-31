@@ -85,6 +85,7 @@ def weight_revive(param, next_param, dead_neuron_mask, key,
   else:
     key, subkey = random.split(key)
     noise = jax.random.normal(subkey, shape=param.shape) * jnp.abs(param) * eps
+  noise = 0
   param = jnp.where(
     dead_incoming_mask, new_incoming_param + noise, param
   )
@@ -1021,16 +1022,24 @@ class NeuronRecycler(BaseRecycler):
       #   wandb.log({'{}_n_death'.format(layer_name): n_death, 'grad_step': update_step})
       #   wandb.log({'{}_needed_n_death'.format(layer_name): needed_n_death.tolist(), 'grad_step': update_step})
 
-      # Determine massive neurons by a pre-set number self.K
+      # ----------------------------Determine massive neurons and dead neurons-------------------------------
+      n_mass = jnp.count_nonzero(score >= max(2, self.mass_thres)).tolist()
+      # Don't interfere with non-massive neurons
+      K = n_mass if self.K > n_mass else self.K
+      if K < 1:
+        continue
       indices = sort_array(score)
+      top_K_indices = indices[:K]
+      top_K_values = score[top_K_indices]
       n_death = jnp.count_nonzero(score <= self.dead_thres).tolist()
-      M = int(n_death // self.K)
-      least_KM_indices = indices[- self.K * M:]
-      layer_name = k[k.find('/')+1:]
-      if self.track:
-        # wandb.log({'{}_neutralized_activation_of_top1'.format(layer_name): top_K_values[0]/M, 'grad_step': update_step})
-        wandb.log({'{}_n_death'.format(layer_name): n_death, 'grad_step': update_step})
-        # wandb.log({'{}_needed_n_death'.format(layer_name): needed_n_death.tolist(), 'grad_step': update_step})
+      M = top_K_values[int(K / 2)].astype(int)
+      # Don't interfere with non-dead neurons
+      if n_death >= K * M:
+        least_KM_indices = indices[- K * M:]
+      else:
+        least_KM_indices = indices[-n_death:]
+        M = int(n_death // K)
+      # ------------------------------------------------------------------------------------------------------------------
 
       dead_neuron_mask = jnp.zeros_like(score)
       dead_neuron_mask = dead_neuron_mask.at[least_KM_indices].set(1)
@@ -1051,9 +1060,9 @@ class NeuronRecycler(BaseRecycler):
         mass_incoming_mask_dict[param_key] = mass_incoming_mask
         mass_outgoing_mask_dict[next_param_key] = mass_outgoing_mask
       
-      for K in range(self.K):
+      for j in range(K):
         mass_neuron_mask = jnp.zeros_like(score)
-        mass_neuron_mask = mass_neuron_mask.at[indices[K]].set(1)
+        mass_neuron_mask = mass_neuron_mask.at[indices[j]].set(1)
         mass_neuron_mask = mass_neuron_mask != 0
         mass_incoming_mask, mass_outgoing_mask = self.create_mask_helper(
             mass_neuron_mask, param, next_param

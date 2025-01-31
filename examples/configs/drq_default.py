@@ -14,9 +14,9 @@ def get_config():
     config.weight_scaling = False
     config.incoming_scale = 1.0
     
-    config.mass_thres = 10.
+    config.mass_thres = 2.
     config.dead_thres = 0.1
-    config.K = 10
+    config.K = 25
     config.weight_revive_eps = 0.01
 
     config.n_step_trgt = 1
@@ -34,7 +34,7 @@ def get_config():
     config.batch_size = 512
 
     config.batch_size_statistics = 256
-    config.dead_neurons_thresholds = [0.0, 0.025, 0.1]
+    config.dead_neurons_thresholds = [0.0, 0.1]
     config.dormancy_logging_period = 20000
 
     config.discount = 0.99
