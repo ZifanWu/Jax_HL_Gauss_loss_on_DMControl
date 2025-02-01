@@ -84,6 +84,7 @@ class ActivationTrackDrQDoubleCritic(nn.Module):
     cnn_strides: Sequence[int] = (2, 1, 1, 1)
     cnn_padding: str = 'VALID'
     latent_dim: int = 50
+    use_LN: bool = False
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
@@ -100,7 +101,7 @@ class ActivationTrackDrQDoubleCritic(nn.Module):
         # x = IdentityLayer(name=f'{layer.name}_act')(x)
         x = jnp.concatenate([x, actions], -1)
 
-        return ActivationTrackDoubleCritic(self.hidden_dims, name='CriticHead')(x)
+        return ActivationTrackDoubleCritic(self.hidden_dims, name='CriticHead', use_LN=self.use_LN)(x)
 
 
 class ActivationTrackDrQDistributionalDoubleCritic(nn.Module):
@@ -132,7 +133,8 @@ class ActivationTrackDrQDistributionalDoubleCritic(nn.Module):
         x = jnp.concatenate([x, actions], -1)
 
         return ActivationTrackDoubleDistributionalCritic(self.hidden_dims, self.n_logits, 
-                                                         num_qs=self.num_qs, name='CriticHead', use_layer_norm=self.use_layer_norm)(x)
+                                                         num_qs=self.num_qs, name='CriticHead', 
+                                                         use_layer_norm=self.use_layer_norm)(x)
 
 
 class DrQDistributionalSingleCritic(nn.Module):

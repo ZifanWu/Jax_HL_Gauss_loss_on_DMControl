@@ -102,13 +102,14 @@ class ActivationTrackDoubleCritic(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     activate_final: int = False
     num_qs: int = 2
+    use_LN: bool = False
 
     @nn.compact
     def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
         critics = []
         for q in range(self.num_qs):
             critic = ActivationTrackCritic(self.hidden_dims, self.activations,
-                              name='critic{}'.format(q))(inputs)
+                              name='critic{}'.format(q), use_layer_norm=self.use_LN)(inputs)
             critics.append(critic)
         return jnp.stack(critics).squeeze(-1) # (2, 1)
 

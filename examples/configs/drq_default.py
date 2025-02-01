@@ -6,6 +6,9 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.use_LNWD_in_critic = False
+    config.WD_rate = 0.0001
+    
     config.reset_mass_opt_state = False
     
     config.ntrlize_thres = 2.

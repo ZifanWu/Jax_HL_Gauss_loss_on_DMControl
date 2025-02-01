@@ -82,6 +82,8 @@ class DrQLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 use_LNWD_in_critic: bool = False,
+                 WD_rate: float = 0.001,
                  reset_mass_opt_state: bool = False,
                  ntrlize_thres: float = 2.,
                  NO_K_mass_thres: bool = True,
@@ -133,14 +135,21 @@ class DrQLearner(object):
         # critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
         #                                             cnn_padding, latent_dim)
         critic_def = ActivationTrackDrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
-                                                    cnn_padding, latent_dim)
+                                                    cnn_padding, latent_dim,
+                                                    use_LN=use_LNWD_in_critic)
         # critic = Model.create(critic_def,
         #                       inputs=[critic_key, observations, actions],
         #                       tx=optax.adam(learning_rate=critic_lr))
+        if use_LNWD_in_critic:
+            enc_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
+            head_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
+        else:
+            enc_optimizer = optax.adam(learning_rate=critic_lr)
+            head_optimizer = optax.adam(learning_rate=critic_lr)
         critic = ModelDecoupleOpt.create(critic_def,
                                          inputs=[critic_key, observations, actions],
-                                         tx=optax.adam(learning_rate=critic_lr),
-                                         tx_enc=optax.adam(learning_rate=critic_lr))
+                                         tx=enc_optimizer,
+                                         tx_enc=head_optimizer)
         target_critic = Model.create(
             critic_def, inputs=[critic_key, observations, actions])
 
@@ -156,12 +165,6 @@ class DrQLearner(object):
         self.step = 0
 
         import flax
-        # param_dict = flax.traverse_util.flatten_dict(critic.params, sep='/')
-        # layer_list = list(param_dict.keys())
-        # layer_list = [l[l.find('/')+1:l.rfind('/')] for l in layer_list]
-        # reset_layer_list = list(dict.fromkeys(layer_list))
-        # reset_layer_list = [l for l in reset_layer_list if 'final' not in l and l != '']
-        # reset_layer_list = reset_layer_list[reset_start_layer_idx:]
         def get_layer_list(model: Model) -> list[str]:
             param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
             layer_list = list(param_dict.keys())
