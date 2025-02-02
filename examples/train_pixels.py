@@ -24,7 +24,7 @@ flags.DEFINE_boolean('reset', False, 'Whether to reset the critic head periodica
 flags.DEFINE_boolean('redo_critic', False, 'Whether to redo dormant neurons in the critic head periodically.')
 flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in the actor head periodically.')
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
-flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
+flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval') # NOTE 100000 for Reset
 flags.DEFINE_integer('reset_start_step', int(1), 'Reset time interval')
 # flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
@@ -55,7 +55,7 @@ config_flags.DEFINE_config_file(
 PLANET_ACTION_REPEAT = {
     'cartpole-swingup': 8,
     'reacher-easy': 4,
-    # 'cheetah-run': 4,
+    'cheetah-run': 4,
     'finger-spin': 2,
     'ball_in_cup-catch': 4,
     'walker-walk': 2
