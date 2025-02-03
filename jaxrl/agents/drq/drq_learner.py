@@ -176,7 +176,7 @@ class DrQLearner(object):
             # print(3333, layer_list)
             # layer_list = [l for l in layer_list if 'final' not in l and l != '']
             layer_list = [l for l in layer_list if ('dense' in l or 'final' in l) and 'layernorm' not in l]
-            print(4444, layer_list)
+            print('layer name list: ', layer_list)
             return layer_list
 
         critic_layer_list = get_layer_list(critic)
