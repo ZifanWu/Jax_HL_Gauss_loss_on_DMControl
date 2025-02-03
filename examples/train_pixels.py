@@ -320,8 +320,7 @@ def main(_):
                 # save encoder optimizer statistics
                 old_critic_enc_opt = agent.critic.opt_state_enc
                 # NOTE (added by ZW)
-                old_actor = agent.actor.params
-                old_actor_opt = agent.actor.opt_state
+                old_actor = agent.actor
                 
                 # create new agent: note that the temperature is new as well
                 agent = create_new_agent(env, replay_buffer)
@@ -340,7 +339,7 @@ def main(_):
                 
                 # NOTE (added by ZW)
                 agent.actor = old_actor
-                agent.actor = agent.actor.replace(opt_state=old_actor_opt)
+                # agent.actor = agent.actor.replace(opt_state=old_actor_opt)
                 
                 # resetting target critic
                 new_target_critic_params = agent.target_critic.params.copy(
