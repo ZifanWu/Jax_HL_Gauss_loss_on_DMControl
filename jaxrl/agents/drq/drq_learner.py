@@ -76,7 +76,8 @@ class DrQLearner(object):
                  seed: int,
                  track: bool,
                  replay_buffer,
-                 redo: bool,
+                 redo_critic: bool,
+                 redo_actor: bool,
                  neutralize_dormant_neurons: bool,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
@@ -182,7 +183,7 @@ class DrQLearner(object):
         actor_layer_list = get_layer_list(actor)
         critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l]
         critic2_layer_list = [l for l in critic_layer_list if 'critic1' in l]
-        if redo:
+        if redo_critic:
             self.critic1_weight_recycler = weight_recyclers.NeuronRecycler(critic1_layer_list, 
                                                                         track=track,
                                                                         reset_period=reset_interval,
@@ -216,19 +217,32 @@ class DrQLearner(object):
                                                                         track=track, 
                                                                         dead_neurons_thresholds=dead_neurons_thresholds, 
                                                                         dormancy_logging_period=dormancy_logging_period)
-            # self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
-            #                                                             track=track, 
-            #                                                             dead_neurons_thresholds=dead_neurons_thresholds, 
-            #                                                             dormancy_logging_period=dormancy_logging_period)
-        self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
-                                                                    track, 
-                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                    dormancy_logging_period=dormancy_logging_period, 
-                                                                    )
+        if redo_actor:
+            self.actor_weight_recycler = weight_recyclers.NeuronRecycler(actor_layer_list, 
+                                                                        track=track, 
+                                                                        reset_period=reset_interval,
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period,
+                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
+                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
+                                                                        weight_revive_eps=weight_revive_eps,
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres,
+                                                                        reset_mass_opt_state=reset_mass_opt_state,
+                                                                        )
+        else:
+            self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
+                                                                        track, 
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period, 
+                                                                        )
 
         self.replay_buffer = replay_buffer
         self.batch_size_statistics = batch_size_statistics
-        self.redo = redo
+        self.redo_critic = redo_critic
+        self.redo_actor = redo_actor
 
     def sample_actions(self,
                        observations: np.ndarray,
@@ -326,29 +340,29 @@ class DrQLearner(object):
         # import time
         # time.sleep(222)
         self.rng = new_rng
-        if self.redo:
+        if self.redo_critic:
             self.rng, key = jax.random.split(self.rng)
-            # print(critic_intermediates.keys())['CriticHead/critic0/dense0_act/__call__', 'CriticHead/critic0/dense1_act/__call__', 'CriticHead/critic0/final_act/__call__', 'CriticHead/critic1/dense0_act/__call__', 'CriticHead/critic1/dense1_act/__call__', 'CriticHead/critic1/final_act/__call__']
-            # for k in critic_intermediates.keys():
-            #     print(11, len(critic_intermediates[k]))
-            # import time
-            # time.sleep(222)
-            # print(new_critic.opt_state_head[0][1].keys())frozen_dict_keys(['CriticHead', 'LayerNorm_0', 'dense-1_layernorm_tanh'])
-            # print(new_critic.opt_state_head[0][2].keys())frozen_dict_keys(['CriticHead', 'LayerNorm_0', 'dense-1_layernorm_tanh'])
-            # critic1_opt_state = {'CriticHead': new_critic.opt_state_head[0][1]['CriticHead']}
             redone_critic1_params, redone_opt_state = self.critic1_weight_recycler.maybe_update_weights(
                 self.step, critic1_intermediates, new_critic.params, key, new_critic.opt_state_head
             )
+            self.rng, key = jax.random.split(self.rng)
             redone_critic2_params, _ = self.critic2_weight_recycler.maybe_update_weights(
                 self.step, critic2_intermediates, new_critic.params, key, new_critic.opt_state_head
             )
-            
             new_critic_params = new_critic.params.copy(
                     add_or_replace={'CriticHead': 
                                     flax.core.FrozenDict({'critic0': redone_critic1_params['CriticHead']['critic0'], 
                                     'critic1': redone_critic2_params['CriticHead']['critic1']})})
             new_critic = new_critic.replace(params=new_critic_params,
                                             opt_state_head=redone_opt_state)
+            
+        if self.redo_actor:
+            self.rng, key = jax.random.split(self.rng)
+            redone_actor_params, redone_opt_state = self.actor_weight_recycler.maybe_update_weights(
+                self.step, actor_intermediates, new_actor.params, key, new_actor.opt_state
+            )
+            new_actor = new_actor.replace(params=redone_actor_params,
+                                          opt_state=redone_opt_state)
 
         self.actor = new_actor
         self.critic = new_critic

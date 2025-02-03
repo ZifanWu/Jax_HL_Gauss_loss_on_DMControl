@@ -219,7 +219,7 @@ def main(_):
     n_step_trgt = kwargs.pop('n_step_trgt')
     def create_new_agent(env, buffer):
         if algo == 'drq':
-            agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.ntrlize_d_neurons,
+            agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         elif algo == 'drq_weight_pruning':
@@ -319,6 +319,9 @@ def main(_):
                 old_target_critic_enc = agent.target_critic.params['SharedEncoder']
                 # save encoder optimizer statistics
                 old_critic_enc_opt = agent.critic.opt_state_enc
+                # NOTE (added by ZW)
+                old_actor = agent.actor.params
+                old_actor_opt = agent.actor.opt_state
                 
                 # create new agent: note that the temperature is new as well
                 agent = create_new_agent(env, replay_buffer)
@@ -331,9 +334,13 @@ def main(_):
                 
                 # resetting actor: actor in DrQ uses critic's encoder
                 # note we could have copied enc optimizer here but actor does not affect enc
-                new_actor_params = agent.actor.params.copy(
-                    add_or_replace={'SharedEncoder': old_critic_enc})
-                agent.actor = agent.actor.replace(params=new_actor_params)
+                # new_actor_params = agent.actor.params.copy(
+                #     add_or_replace={'SharedEncoder': old_critic_enc})
+                # agent.actor = agent.actor.replace(params=new_actor_params)
+                
+                # NOTE (added by ZW)
+                agent.actor = old_actor
+                agent.actor = agent.actor.replace(opt_state=old_actor_opt)
                 
                 # resetting target critic
                 new_target_critic_params = agent.target_critic.params.copy(

@@ -839,10 +839,11 @@ class NeuronRecycler(BaseRecycler):
 
     # reset mu, nu of adam optimizer for recycled weights.
     reset_momentum_fn = jax.jit(functools.partial(jax.tree_util.tree_map, reset_momentum))
-    dead_incoming_mask = flax.core.FrozenDict({k: v for k, v in dead_incoming_mask.items() if 'Encoder' not in k})
-    dead_outgoing_mask = flax.core.FrozenDict({k: v for k, v in dead_outgoing_mask.items() if 'Encoder' not in k})
-    mass_incoming_mask = flax.core.FrozenDict({k: v for k, v in mass_incoming_mask.items() if 'Encoder' not in k})
-    mass_outgoing_mask = flax.core.FrozenDict({k: v for k, v in mass_outgoing_mask.items() if 'Encoder' not in k})
+    if 'SharedEncoder' not in opt_state[0][1].keys():
+      dead_incoming_mask = flax.core.FrozenDict({k: v for k, v in dead_incoming_mask.items() if 'Encoder' not in k})
+      dead_outgoing_mask = flax.core.FrozenDict({k: v for k, v in dead_outgoing_mask.items() if 'Encoder' not in k})
+      mass_incoming_mask = flax.core.FrozenDict({k: v for k, v in mass_incoming_mask.items() if 'Encoder' not in k})
+      mass_outgoing_mask = flax.core.FrozenDict({k: v for k, v in mass_outgoing_mask.items() if 'Encoder' not in k})
     if self.reset_mass_opt_state:
       new_mu = reset_momentum_fn(opt_state[0][1], mass_incoming_mask)
       new_mu = reset_momentum_fn(new_mu, mass_outgoing_mask)
@@ -1104,8 +1105,10 @@ class NeuronRecycler(BaseRecycler):
         bias_key = k + '/bias'
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
         new_bias = mass_bias / M
+        key, subkey = random.split(key)
+        noise = jax.random.normal(subkey, shape=new_bias.shape) * jnp.abs(new_bias) * self.weight_revive_eps
         param_dict[bias_key] = jnp.where(
-            dead_neuron_mask, new_bias, param_dict[bias_key]
+            dead_neuron_mask, new_bias + noise, param_dict[bias_key]
         )
         param_dict[bias_key] = jnp.where(
             mass_neuron_mask, new_bias, param_dict[bias_key]
