@@ -1106,9 +1106,8 @@ class NeuronRecycler(BaseRecycler):
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
         new_bias = mass_bias / M
         key, subkey = random.split(key)
-        noise = jax.random.normal(subkey, shape=new_bias.shape) * jnp.abs(new_bias) * self.weight_revive_eps
         param_dict[bias_key] = jnp.where(
-            dead_neuron_mask, new_bias + noise, param_dict[bias_key]
+            dead_neuron_mask, new_bias, param_dict[bias_key]
         )
         param_dict[bias_key] = jnp.where(
             mass_neuron_mask, new_bias, param_dict[bias_key]
