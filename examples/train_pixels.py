@@ -150,6 +150,9 @@ def main(_):
         # FLAGS.env_name, FLAGS.config['max_value'], FLAGS.config['n_step_trgt'] = setting_for_this_idx
         # FLAGS.config['replay_buffer_size'] = setting_for_this_idx
     # FLAGS.config['hidden_dims'][1] = 1024
+    if FLAGS.config['hidden_dims'][0] > 256:
+        FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+        FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
 
     if FLAGS.env_name == 'quadruped-run': # NOTE
         FLAGS.config['replay_buffer_size'] = 100000

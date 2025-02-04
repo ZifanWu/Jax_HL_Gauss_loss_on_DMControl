@@ -1104,7 +1104,7 @@ class NeuronRecycler(BaseRecycler):
         # Reset bias
         bias_key = k + '/bias'
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
-        new_bias = mass_bias / M
+        new_bias = mass_bias / (M + 1)
         key, subkey = random.split(key)
         param_dict[bias_key] = jnp.where(
             dead_neuron_mask, new_bias, param_dict[bias_key]
