@@ -6,6 +6,8 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.ntrlize_shared_dense = False
+    
     config.b1 = 0.9
     config.b2 = 0.999
     config.adam_eps = 1e-8

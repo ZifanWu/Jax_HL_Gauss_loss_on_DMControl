@@ -69,7 +69,8 @@ def weight_shrink(param, mask, k):
   return param
   
 
-def weight_revive(param, next_param, dead_neuron_mask, key, 
+def weight_revive(param, next_param, key, 
+                  dead_incoming_mask, dead_outgoing_mask,
                   mass_incoming_mask, mass_outgoing_mask,
                   eps, k):
   '''
@@ -77,9 +78,6 @@ def weight_revive(param, next_param, dead_neuron_mask, key,
   '''
   new_incoming_param = (param * mass_incoming_mask) / k
   new_outgoing_param = next_param * mass_outgoing_mask
-  dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
-      dead_neuron_mask, param, next_param
-  )
   if eps == 0:
     noise = 0
   else:
@@ -983,7 +981,7 @@ class NeuronRecycler(BaseRecycler):
         for k, p in param_dict.items()
     }
     # prepare mask of incoming and outgoing recycled connections
-    for k in self.reset_layers:      
+    for k in self.reset_layers:
       param_key = k + '/kernel' # NOTE needs to be specified for each algo (if using different network architectures)
       param = param_dict[param_key] # (51, 256) CriticHead/critic0/dense0
       next_k = self.next_layers[k]
@@ -1028,12 +1026,16 @@ class NeuronRecycler(BaseRecycler):
       K = n_mass if self.K > n_mass else self.K
       if K < 1:
         continue
+      # K = 2 # TODO debugging
+      
       indices = sort_array(score)
       top_K_indices = indices[:K]
       top_K_values = score[top_K_indices]
       n_death = jnp.count_nonzero(score <= self.dead_thres).tolist()
+      # n_death = 10 # TODO debugging
       if n_death < K:
         continue # make sure M >= 1
+
       # M = top_K_values[int(K / 2)].astype(int)
       # Don't interfere with non-dead neurons
       # if n_death >= K * M:
@@ -1055,6 +1057,10 @@ class NeuronRecycler(BaseRecycler):
       dead_incoming_mask, dead_outgoing_mask = self.create_mask_helper(
           dead_neuron_mask, param, next_param
       )
+      if next_param.shape != dead_outgoing_mask.shape: # First dense layer, shared by two critic heads
+          action_dim = next_param.shape[0] - dead_outgoing_mask.shape[0]
+          batch_size = dead_outgoing_mask.shape[1]
+          dead_outgoing_mask = jnp.vstack([dead_outgoing_mask, jnp.zeros((action_dim, batch_size))])
       dead_incoming_mask_dict[param_key] = dead_incoming_mask
       dead_outgoing_mask_dict[next_param_key] = dead_outgoing_mask
       
@@ -1090,8 +1096,19 @@ class NeuronRecycler(BaseRecycler):
         dead_neuron_mask = jnp.zeros_like(score)
         dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
         dead_neuron_mask = dead_neuron_mask != 0
+        dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
+                dead_neuron_mask, param, next_param
+          )
+        if next_param.shape != mass_outgoing_mask.shape: # First dense layer, shared by two critic heads
+          action_dim = next_param.shape[0] - mass_outgoing_mask.shape[0]
+          batch_size = mass_outgoing_mask.shape[1]
+          mass_outgoing_mask = jnp.vstack([mass_outgoing_mask, jnp.zeros((action_dim, batch_size))])
+          dead_outgoing_mask = jnp.vstack([dead_outgoing_mask, jnp.zeros((action_dim, batch_size))])
+          
         param, next_param, key = weight_revive_fn(
-            param, next_param, dead_neuron_mask, key, mass_incoming_mask, mass_outgoing_mask
+            param, next_param, key, 
+            dead_incoming_mask, dead_outgoing_mask, 
+            mass_incoming_mask, mass_outgoing_mask
         )
 
         # Replace old weights

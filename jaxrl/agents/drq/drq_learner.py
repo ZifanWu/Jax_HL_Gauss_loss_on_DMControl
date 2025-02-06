@@ -83,6 +83,10 @@ class DrQLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 ntrlize_shared_dense: bool = False,
+                 b1: float = 0.9,
+                 b2: float = 0.999,
+                 adam_eps: float = 1e-8,
                  use_LN_in_critic: bool = False,
                  use_WD_in_critic: bool = False,
                  use_LNWD_in_critic: bool = False,
@@ -140,15 +144,12 @@ class DrQLearner(object):
         critic_def = ActivationTrackDrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
                                                     cnn_padding, latent_dim,
                                                     use_LN=use_LNWD_in_critic or use_LN_in_critic)
-        # critic = Model.create(critic_def,
-        #                       inputs=[critic_key, observations, actions],
-        #                       tx=optax.adam(learning_rate=critic_lr))
         if use_LNWD_in_critic or use_WD_in_critic:
             enc_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
             head_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
         else:
             enc_optimizer = optax.adam(learning_rate=critic_lr)
-            head_optimizer = optax.adam(learning_rate=critic_lr)
+            head_optimizer = optax.adam(learning_rate=critic_lr, b1=b1, b2=b2, eps=adam_eps)
         critic = ModelDecoupleOpt.create(critic_def,
                                          inputs=[critic_key, observations, actions],
                                          tx=enc_optimizer,
@@ -177,13 +178,16 @@ class DrQLearner(object):
             layer_list = list(dict.fromkeys(layer_list))
             # print(3333, layer_list)
             # layer_list = [l for l in layer_list if 'final' not in l and l != '']
-            layer_list = [l for l in layer_list if ('dense' in l or 'final' in l) and 'layernorm' not in l]
+            layer_list = [l for l in layer_list if ('dense' in l or 'final' in l)]
             print('layer name list: ', layer_list)
             return layer_list
 
         critic_layer_list = get_layer_list(critic)
         actor_layer_list = get_layer_list(actor)
-        critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l]
+        if ntrlize_shared_dense:
+            critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l or 'dense-1' in l]
+        else:
+            critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l]
         critic2_layer_list = [l for l in critic_layer_list if 'critic1' in l]
         if redo_critic:
             self.critic1_weight_recycler = weight_recyclers.NeuronRecycler(critic1_layer_list, 
@@ -314,16 +318,13 @@ class DrQLearner(object):
         critic_intermediates, critic_preacts = (
             self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
         )
-        # print(is_intermediated)
-        # print(critic_intermediates == None)
         if is_intermediated:
-            critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k}
+            critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
             critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
             critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k}
             critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
         else:
             critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
-        # print(critic1_intermediates==None, critic2_intermediates==None, critic1_preacts==None, critic2_preacts==None)
         self.critic1_weight_recycler.maybe_log_deadneurons(
             self.step, critic1_intermediates, critic1_preacts, new_critic.params
         ) # step-1: we log the first step's deadneurons
@@ -337,10 +338,7 @@ class DrQLearner(object):
             self.step, actor_intermediates, actor_preacts, new_actor.params
         )
         # print(new_critic.params.keys())frozen_dict_keys(['CriticHead', 'LayerNorm_0', 'SharedEncoder', 'dense-1_layernorm_tanh'])
-        # for k in new_critic.params.keys():
-        #     print(new_critic.params[k].keys())
-        # import time
-        # time.sleep(222)
+
         self.rng = new_rng
         if self.redo_critic:
             self.rng, key = jax.random.split(self.rng)
@@ -353,8 +351,12 @@ class DrQLearner(object):
             )
             new_critic_params = new_critic.params.copy(
                     add_or_replace={'CriticHead': 
-                                    flax.core.FrozenDict({'critic0': redone_critic1_params['CriticHead']['critic0'], 
-                                    'critic1': redone_critic2_params['CriticHead']['critic1']})})
+                                        flax.core.FrozenDict({'critic0': redone_critic1_params['CriticHead']['critic0'], 
+                                            'critic1': redone_critic2_params['CriticHead']['critic1']}),
+                                    'dense-1_layernorm_tanh': 
+                                        flax.core.FrozenDict(redone_critic1_params['dense-1_layernorm_tanh'])
+                                    },
+            )
             new_critic = new_critic.replace(params=new_critic_params,
                                             opt_state_head=redone_opt_state)
             

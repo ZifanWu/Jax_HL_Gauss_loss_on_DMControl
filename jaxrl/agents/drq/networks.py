@@ -95,10 +95,10 @@ class ActivationTrackDrQDoubleCritic(nn.Module):
                     name='SharedEncoder')(observations)
         layer = nn.Dense(self.latent_dim, name='dense-1_layernorm_tanh')
         x = layer(x)
-        # x = IdentityLayer(name=f'{layer.name}_preact')(x)
+        x = IdentityLayer(name=f'{layer.name}_preact')(x)
         x = nn.LayerNorm()(x)
         x = nn.tanh(x)
-        # x = IdentityLayer(name=f'{layer.name}_act')(x)
+        x = IdentityLayer(name=f'{layer.name}_act')(x)
         x = jnp.concatenate([x, actions], -1)
 
         return ActivationTrackDoubleCritic(self.hidden_dims, name='CriticHead', use_LN=self.use_LN)(x)
