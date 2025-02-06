@@ -6,6 +6,10 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.b1 = 0.9
+    config.b2 = 0.999
+    config.adam_eps = 1e-8
+    
     config.use_LN_in_critic = False
     config.use_WD_in_critic = False
     config.use_LNWD_in_critic = False

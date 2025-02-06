@@ -275,7 +275,7 @@ def main(_):
             for k, v in info['episode'].items():
                 summary_writer.add_scalar(f'training/{k}', v,
                                           info['total']['timesteps'])
-                if self.track:
+                if FLAGS.track:
                     wandb.log({f'training/{k}': v, 'frame': info['total']['timesteps']})
 
         if i >= FLAGS.start_training:
@@ -289,7 +289,7 @@ def main(_):
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
                     summary_writer.add_scalar(f'training/{k}', v, i)
-                    if self.track:
+                    if FLAGS.track:
                         wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
                 # summary_writer.flush()
 
@@ -299,7 +299,7 @@ def main(_):
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
                                           info['total']['timesteps'])
-                if self.track:
+                if FLAGS.track:
                     wandb.log({f'evaluation/average_{k}s': v.tolist(), 'frame':  info['total']['timesteps']})
             summary_writer.flush()
 
