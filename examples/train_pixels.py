@@ -150,7 +150,7 @@ def main(_):
         # FLAGS.env_name, FLAGS.config['max_value'], FLAGS.config['n_step_trgt'] = setting_for_this_idx
         # FLAGS.config['replay_buffer_size'] = setting_for_this_idx
     # FLAGS.config['hidden_dims'][1] = 1024
-    if FLAGS.config['hidden_dims'][0] > 256:
+    if FLAGS.config['hidden_dims'][0] >= 1024:
         FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
         FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
 
@@ -275,7 +275,8 @@ def main(_):
             for k, v in info['episode'].items():
                 summary_writer.add_scalar(f'training/{k}', v,
                                           info['total']['timesteps'])
-                wandb.log({f'training/{k}': v, 'frame': info['total']['timesteps']})
+                if self.track:
+                    wandb.log({f'training/{k}': v, 'frame': info['total']['timesteps']})
 
         if i >= FLAGS.start_training:
             # batch = replay_buffer.sample(int(config['batch_size']))
@@ -288,7 +289,8 @@ def main(_):
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
                     summary_writer.add_scalar(f'training/{k}', v, i)
-                    wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
+                    if self.track:
+                        wandb.log({f'training/{k}': v.tolist(), 'global_step': i})
                 # summary_writer.flush()
 
         if i % FLAGS.eval_interval == 0:
@@ -297,7 +299,8 @@ def main(_):
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v.tolist(),
                                           info['total']['timesteps'])
-                wandb.log({f'evaluation/average_{k}s': v.tolist(), 'frame':  info['total']['timesteps']})
+                if self.track:
+                    wandb.log({f'evaluation/average_{k}s': v.tolist(), 'frame':  info['total']['timesteps']})
             summary_writer.flush()
 
             eval_returns.append(

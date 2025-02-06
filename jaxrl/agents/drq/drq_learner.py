@@ -83,6 +83,7 @@ class DrQLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 use_LN_in_critic: bool = False,
                  use_WD_in_critic: bool = False,
                  use_LNWD_in_critic: bool = False,
                  WD_rate: float = 0.001,
@@ -138,7 +139,7 @@ class DrQLearner(object):
         #                                             cnn_padding, latent_dim)
         critic_def = ActivationTrackDrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
                                                     cnn_padding, latent_dim,
-                                                    use_LN=use_LNWD_in_critic)
+                                                    use_LN=use_LNWD_in_critic or use_LN_in_critic)
         # critic = Model.create(critic_def,
         #                       inputs=[critic_key, observations, actions],
         #                       tx=optax.adam(learning_rate=critic_lr))

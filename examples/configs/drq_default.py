@@ -6,8 +6,8 @@ def get_config():
 
     config.algo = 'drq'
     
+    config.use_LN_in_critic = False
     config.use_WD_in_critic = False
-    
     config.use_LNWD_in_critic = False
     config.WD_rate = 0.0001
     
