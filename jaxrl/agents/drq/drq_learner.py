@@ -83,6 +83,7 @@ class DrQLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 use_WD_in_critic: bool = False,
                  use_LNWD_in_critic: bool = False,
                  WD_rate: float = 0.001,
                  reset_mass_opt_state: bool = False,
@@ -141,7 +142,7 @@ class DrQLearner(object):
         # critic = Model.create(critic_def,
         #                       inputs=[critic_key, observations, actions],
         #                       tx=optax.adam(learning_rate=critic_lr))
-        if use_LNWD_in_critic:
+        if use_LNWD_in_critic or use_WD_in_critic:
             enc_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
             head_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
         else:
