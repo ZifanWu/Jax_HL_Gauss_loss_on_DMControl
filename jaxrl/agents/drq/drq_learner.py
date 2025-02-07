@@ -321,7 +321,7 @@ class DrQLearner(object):
         if is_intermediated:
             critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
             critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
-            critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k}
+            critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
             critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
         else:
             critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
