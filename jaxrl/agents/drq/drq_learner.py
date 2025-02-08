@@ -249,6 +249,7 @@ class DrQLearner(object):
         self.batch_size_statistics = batch_size_statistics
         self.redo_critic = redo_critic
         self.redo_actor = redo_actor
+        self.ntrlize_shared_dense = ntrlize_shared_dense
 
     def sample_actions(self,
                        observations: np.ndarray,
@@ -319,9 +320,13 @@ class DrQLearner(object):
             self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
         )
         if is_intermediated:
-            critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
+            if self.ntrlize_shared_dense:
+                critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
+                critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
+            else:
+                critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k}
+                critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k}
             critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
-            critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
             critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
         else:
             critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
