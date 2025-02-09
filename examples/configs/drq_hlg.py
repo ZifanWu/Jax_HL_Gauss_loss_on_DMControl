@@ -10,9 +10,9 @@ def get_config():
     config.probs_MSE = False
     config.value_MSE = False
     
-    config.use_layer_norm_in_critic = True
+    config.use_layer_norm_in_critic = False
     config.use_batch_norm = False
-    config.use_weight_decay_in_critic = True
+    config.use_weight_decay_in_critic = False
     config.WD_rate = 0.0001
 
     config.n_step_trgt = 1
@@ -26,7 +26,7 @@ def get_config():
 
     config.batch_size_statistics = 256
     config.dead_neurons_thresholds = [0.0, 0.025, 0.1]
-    config.dormancy_logging_period = 2000
+    config.dormancy_logging_period = 5000
 
     config.actor_lr = 3e-4
     config.critic_lr = 3e-4

@@ -48,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_default.py',
+    'configs/drq_hlg.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -150,9 +150,15 @@ def main(_):
         # FLAGS.env_name, FLAGS.config['max_value'], FLAGS.config['n_step_trgt'] = setting_for_this_idx
         # FLAGS.config['replay_buffer_size'] = setting_for_this_idx
     # FLAGS.config['hidden_dims'][1] = 1024
-    if FLAGS.config['hidden_dims'][0] >= 1024:
-        FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
-        FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+    if kwargs['algo'] == 'drq_hlg':
+        if FLAGS.config['actor_hidden_dims'][0] >= 1024:
+            FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+        if FLAGS.config['critic_hidden_dims'][0] >= 1024:
+            FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+    else:
+        if FLAGS.config['hidden_dims'][0] >= 1024:
+            FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+            FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
 
     if FLAGS.env_name == 'quadruped-run': # NOTE
         FLAGS.config['replay_buffer_size'] = 100000
@@ -235,7 +241,7 @@ def main(_):
                                 FLAGS.use_batched_random_crop, FLAGS.m_05, env.observation_space.sample()[np.newaxis],
                                 env.action_space.sample()[np.newaxis], FLAGS.reset_interval, **kwargs)
         elif algo == 'drq_hlg':
-            agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer,
+            agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
                                         env.observation_space.sample()[np.newaxis],
                                         env.action_space.sample()[np.newaxis], **kwargs)
         return agent

@@ -111,6 +111,8 @@ class DrQHLGaussianLearner(object):
                  seed: int,
                  track: bool,
                  replay_buffer,
+                 redo_critic: bool,
+                 redo_actor: bool,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  probs_MSE: bool = False,
@@ -119,7 +121,6 @@ class DrQHLGaussianLearner(object):
                  use_batch_norm: bool = False,
                  use_weight_decay_in_critic: bool = False,
                  WD_rate: float = 0.001,
-                 redo: bool = False,
                  reset_interval: int = 200_000,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
@@ -208,42 +209,83 @@ class DrQHLGaussianLearner(object):
         self.probs_MSE = probs_MSE
         self.value_MSE = value_MSE
 
+        import flax
         def get_layer_list(model: Model) -> list[str]:
             param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
             layer_list = list(param_dict.keys())
             # print(1111, layer_list)
-            layer_list = [l[l.find('/')+1:l.rfind('/')] for l in layer_list]
+            layer_list = [l[:l.rfind('/')] for l in layer_list]
             # print(2222, layer_list)
             layer_list = list(dict.fromkeys(layer_list))
             # print(3333, layer_list)
             # layer_list = [l for l in layer_list if 'final' not in l and l != '']
-            layer_list = [l for l in layer_list if 'dense' in l]
-            print(4444, layer_list)
+            layer_list = [l for l in layer_list if ('dense' in l or 'final' in l)]
+            print('layer name list: ', layer_list)
             return layer_list
 
         critic_layer_list = get_layer_list(critic)
         actor_layer_list = get_layer_list(actor)
-        # if redo:
-        #     self.critic_weight_recycler = weight_recyclers.NeuronRecycler(critic_layer_list, 
-        #                                                                   track, 
-        #                                                                   dead_neurons_threshold, 
-        #                                                                   dormancy_logging_period=dormancy_logging_period, 
-        #                                                                   prune_dormant_neurons=False, 
-        #                                                                   reset_period=reset_interval)
-        # else:
-        self.critic_weight_recycler = weight_recyclers.BaseRecycler(critic_layer_list, 
-                                                                    track=track, 
-                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                    dormancy_logging_period=dormancy_logging_period)
-        self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
-                                                                    track, 
-                                                                    dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                    dormancy_logging_period=dormancy_logging_period, 
-                                                                    )
+        critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l or 'dense-1' in l]
+        critic2_layer_list = [l for l in critic_layer_list if 'critic1' in l]
+        if redo_critic:
+            self.critic1_weight_recycler = weight_recyclers.NeuronRecycler(critic1_layer_list, 
+                                                                        track=track,
+                                                                        reset_period=reset_interval,
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period,
+                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
+                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
+                                                                        weight_revive_eps=weight_revive_eps,
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres,
+                                                                        reset_mass_opt_state=reset_mass_opt_state,
+                                                                        )
+            self.critic2_weight_recycler = weight_recyclers.NeuronRecycler(critic2_layer_list, 
+                                                                        track=track, 
+                                                                        reset_period=reset_interval,
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period,
+                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
+                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
+                                                                        weight_revive_eps=weight_revive_eps,
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres,
+                                                                        reset_mass_opt_state=reset_mass_opt_state,
+                                                                        )
+        else:
+            self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
+                                                                        track=track, 
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period)
+        if redo_actor:
+            self.actor_weight_recycler = weight_recyclers.NeuronRecycler(actor_layer_list, 
+                                                                        track=track, 
+                                                                        reset_period=reset_interval,
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period,
+                                                                        neutralize_dormant_neurons=neutralize_dormant_neurons,
+                                                                        dead_thres=dead_thres, mass_thres=mass_thres,
+                                                                        weight_revive_eps=weight_revive_eps,
+                                                                        K=K,
+                                                                        reset_start_step=reset_start_step,
+                                                                        NO_K_mass_thres=NO_K_mass_thres,
+                                                                        ntrlize_thres=ntrlize_thres,
+                                                                        reset_mass_opt_state=reset_mass_opt_state,
+                                                                        )
+        else:
+            self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
+                                                                        track, 
+                                                                        dead_neurons_thresholds=dead_neurons_thresholds, 
+                                                                        dormancy_logging_period=dormancy_logging_period, 
+                                                                        )
+
 
         self.replay_buffer = replay_buffer
         self.batch_size_statistics = batch_size_statistics
-        self.redo = redo
 
         self.actor = actor
         self.critic = critic
@@ -325,34 +367,44 @@ class DrQHLGaussianLearner(object):
             batch, self.discount, self.tau, self.target_entropy,
             self.step % self.target_update_period == 0, self.probs_MSE, self.value_MSE)
         
-        is_intermediated = self.critic_weight_recycler.is_intermediated_required(self.step-1)
+        # is_intermediated = self.critic_weight_recycler.is_intermediated_required(self.step-1)
+        # critic_intermediates, critic_preacts = (
+        #     self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
+        # )
+        # self.critic_weight_recycler.maybe_log_deadneurons(
+        #     self.step-1, critic_intermediates, critic_preacts, new_critic.params
+        # ) # step-1: we log the first step's deadneurons
+        # actor_intermediates, actor_preacts = (
+        #     self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None, )
+        # )
+        # self.actor_weight_recycler.maybe_log_deadneurons(
+        #     self.step-1, actor_intermediates, actor_preacts, new_actor.params
+        # )
+        
+        is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
         critic_intermediates, critic_preacts = (
             self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
         )
-        self.critic_weight_recycler.maybe_log_deadneurons(
-            self.step-1, critic_intermediates, critic_preacts, new_critic.params
+        if is_intermediated:
+            critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
+            critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
+            critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
+            critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
+        else:
+            critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
+        self.critic1_weight_recycler.maybe_log_deadneurons(
+            self.step, critic1_intermediates, critic1_preacts, new_critic.params
         ) # step-1: we log the first step's deadneurons
+        # self.critic2_weight_recycler.maybe_log_deadneurons(
+        #     self.step-1, critic2_intermediates, critic2_preacts, new_critic.params['CriticHead']['critic0']
+        # ) # step-1: we log the first step's deadneurons
         actor_intermediates, actor_preacts = (
-            self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None, )
+            self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None)
         )
         self.actor_weight_recycler.maybe_log_deadneurons(
-            self.step-1, actor_intermediates, actor_preacts, new_actor.params
+            self.step, actor_intermediates, actor_preacts, new_actor.params
         )
 
-        # self.rng = new_rng
-        # if self.redo:
-        #     self.rng, key = jax.random.split(self.rng)
-        #     redone_enc_params, redone_enc_opt_state = self.critic_weight_recycler.maybe_update_weights(
-        #         self.step, critic_intermediates['SharedEncoder'], new_critic.params['SharedEncoder'], key, new_critic.opt_state_enc
-        #     )
-        #     redone_critichead_params, redone_critichead_opt_state = self.critic_weight_recycler.maybe_update_weights(
-        #         self.step, critic_intermediates['CriticHead'], new_critic.params['criticHead'], key, new_critic.opt_state_head
-        #     )
-        #     new_params = flax.core.unfreeze(new_critic.params)
-        #     new_params['SharedEncoder'], new_params['CriticHead'] = redone_enc_params, redone_critichead_params
-        #     new_critic = new_critic.replace(params=flax.core.freeze(new_params), 
-        #                                     opt_state_enc=redone_enc_opt_state,
-        #                                     opt_state_head=redone_critichead_opt_state)
 
         self.rng = new_rng
         self.actor = new_actor
