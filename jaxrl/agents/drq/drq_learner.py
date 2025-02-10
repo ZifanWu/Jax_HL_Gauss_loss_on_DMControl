@@ -330,19 +330,6 @@ class DrQLearner(object):
             critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
         else:
             critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
-        self.critic1_weight_recycler.maybe_log_deadneurons(
-            self.step, critic1_intermediates, critic1_preacts, new_critic.params
-        ) # step-1: we log the first step's deadneurons
-        # self.critic2_weight_recycler.maybe_log_deadneurons(
-        #     self.step-1, critic2_intermediates, critic2_preacts, new_critic.params['CriticHead']['critic0']
-        # ) # step-1: we log the first step's deadneurons
-        actor_intermediates, actor_preacts = (
-            self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None)
-        )
-        self.actor_weight_recycler.maybe_log_deadneurons(
-            self.step, actor_intermediates, actor_preacts, new_actor.params
-        )
-        # print(new_critic.params.keys())frozen_dict_keys(['CriticHead', 'LayerNorm_0', 'SharedEncoder', 'dense-1_layernorm_tanh'])
 
         self.rng = new_rng
         if self.redo_critic:
@@ -372,6 +359,19 @@ class DrQLearner(object):
             )
             new_actor = new_actor.replace(params=redone_actor_params,
                                           opt_state=redone_opt_state)
+            
+        self.critic1_weight_recycler.maybe_log_deadneurons(
+            self.step, critic1_intermediates, critic1_preacts, new_critic.params
+        ) # step-1: we log the first step's deadneurons
+        # self.critic2_weight_recycler.maybe_log_deadneurons(
+        #     self.step-1, critic2_intermediates, critic2_preacts, new_critic.params['CriticHead']['critic0']
+        # ) # step-1: we log the first step's deadneurons
+        actor_intermediates, actor_preacts = (
+            self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None)
+        )
+        self.actor_weight_recycler.maybe_log_deadneurons(
+            self.step, actor_intermediates, actor_preacts, new_actor.params
+        )
 
         self.actor = new_actor
         self.critic = new_critic
