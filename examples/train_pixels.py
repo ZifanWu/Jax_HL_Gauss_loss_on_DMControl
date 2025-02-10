@@ -157,8 +157,8 @@ def main(_):
         FLAGS.config['replay_buffer_size'] = 100000
     if 'humanoid' in FLAGS.env_name:
         FLAGS.config['latent_dim'] = 100
-        FLAGS.config['actor_lr'] = 8e-5
-        FLAGS.config['critic_lr'] = 8e-5
+        # FLAGS.config['actor_lr'] = 8e-5
+        # FLAGS.config['critic_lr'] = 8e-5
 
     config = merge_configs(FLAGS, FLAGS.config)
     FLAGS.seed = np.random.randint(0, 100000)
