@@ -7,11 +7,31 @@ from typing import Dict, Optional, OrderedDict
 
 import dm_env
 import numpy as np
+import gym
 from dm_control import suite
 from gym import core, spaces
 
 from jaxrl.wrappers.common import TimeStep
 
+
+# def dmc_spec2gym_space(spec):
+#     if isinstance(spec, OrderedDict) or isinstance(spec, dict):
+#         spec = copy.copy(spec)
+#         for k, v in spec.items():
+#             spec[k] = dmc_spec2gym_space(v)
+#         return spaces.Dict(spec)
+#     elif isinstance(spec, dm_env.specs.BoundedArray):
+#         return spaces.Box(low=spec.minimum,
+#                           high=spec.maximum,
+#                           shape=spec.shape,
+#                           dtype=spec.dtype)
+#     elif isinstance(spec, dm_env.specs.Array):
+#         return spaces.Box(low=-float('inf'),
+#                           high=float('inf'),
+#                           shape=spec.shape,
+#                           dtype=spec.dtype)
+#     else:
+#         raise NotImplementedError
 
 def dmc_spec2gym_space(spec):
     if isinstance(spec, OrderedDict) or isinstance(spec, dict):
@@ -20,13 +40,24 @@ def dmc_spec2gym_space(spec):
             spec[k] = dmc_spec2gym_space(v)
         return spaces.Dict(spec)
     elif isinstance(spec, dm_env.specs.BoundedArray):
-        return spaces.Box(low=spec.minimum,
-                          high=spec.maximum,
+        low = np.broadcast_to(spec.minimum, spec.shape)
+        high = np.broadcast_to(spec.maximum, spec.shape)
+        return spaces.Box(low=low,
+                          high=high,
                           shape=spec.shape,
                           dtype=spec.dtype)
     elif isinstance(spec, dm_env.specs.Array):
-        return spaces.Box(low=-float('inf'),
-                          high=float('inf'),
+        if np.issubdtype(spec.dtype, np.integer):
+            low = np.iinfo(spec.dtype).min
+            high = np.iinfo(spec.dtype).max
+        elif np.issubdtype(spec.dtype, np.inexact):
+            low = float('-inf')
+            high = float('inf')
+        else:
+            raise ValueError()
+
+        return spaces.Box(low=low,
+                          high=high,
                           shape=spec.shape,
                           dtype=spec.dtype)
     else:
@@ -48,21 +79,51 @@ class DMCEnv(core.Env):
         ), 'You must provide either an environment or domain and task names.'
 
         if env is None:
-            env = suite.load(domain_name=domain_name,
-                             task_name=task_name,
-                             task_kwargs=task_kwargs,
-                             environment_kwargs=environment_kwargs)
+            if 'duplo' in domain_name:
+                from dm_control import manipulation
+                env = manipulation.load(task_name + "_vision")
+            else:
+                env = suite.load(domain_name=domain_name,
+                                task_name=task_name,
+                                task_kwargs=task_kwargs,
+                                environment_kwargs=environment_kwargs)
 
         self._env = env
         self.action_space = dmc_spec2gym_space(self._env.action_spec())
 
         self.observation_space = dmc_spec2gym_space(
             self._env.observation_spec())
+        # self._size = (64, 64)
+        # self._ignored_keys = []
+        # for key, value in self._env.observation_spec().items():
+        #     if value.shape == (0,):
+        #         print(f"Ignoring empty observation key '{key}'.")
+        #         self._ignored_keys.append(key)
 
         self.seed(seed=task_kwargs['random'])
 
     def __getattr__(self, name):
         return getattr(self._env, name)
+    
+    # @property
+    # def observation_space(self):
+    #     spaces = {
+    #         "image": gym.spaces.Box(0, 255, self._size + (3,), dtype=np.uint8),
+    #         "reward": gym.spaces.Box(-np.inf, np.inf, (), dtype=np.float32),
+    #         "is_first": gym.spaces.Box(0, 1, (), dtype=bool),
+    #         "is_last": gym.spaces.Box(0, 1, (), dtype=bool),
+    #         "is_terminal": gym.spaces.Box(0, 1, (), dtype=bool),
+    #     }
+    #     for key, value in self._env.observation_spec().items():
+    #         if key in self._ignored_keys:
+    #             continue
+    #         if value.dtype == np.float64:
+    #             spaces[key] = gym.spaces.Box(-np.inf, np.inf, value.shape, np.float32)
+    #         elif value.dtype == np.uint8:
+    #             spaces[key] = gym.spaces.Box(0, 255, value.shape, np.uint8)
+    #         else:
+    #             raise NotImplementedError(value.dtype)
+    #     return spaces
 
     def step(self, action: np.ndarray) -> TimeStep:
         assert self.action_space.contains(action)

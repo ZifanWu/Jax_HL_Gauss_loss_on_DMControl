@@ -48,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_default.py',
+    'configs/drq_hlg.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -159,6 +159,8 @@ def main(_):
         FLAGS.config['latent_dim'] = 100
         # FLAGS.config['actor_lr'] = 8e-5
         # FLAGS.config['critic_lr'] = 8e-5
+    if FLAGS.env_name == 'reach_duplo' and kwargs['algo'] == 'drq_hlg':
+        FLAGS.config['max_value'] = 250
 
     config = merge_configs(FLAGS, FLAGS.config)
     FLAGS.seed = np.random.randint(0, 100000)
