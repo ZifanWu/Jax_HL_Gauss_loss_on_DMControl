@@ -113,15 +113,33 @@ class DrQHLGaussianLearner(object):
                  replay_buffer,
                  redo_critic: bool,
                  redo_actor: bool,
+                 neutralize_dormant_neurons: bool,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 reset_interval: int,
+                 reset_start_step: int,
+                 ntrlize_shared_dense: bool = False,
+                 b1: float = 0.9,
+                 b2: float = 0.999,
+                 adam_eps: float = 1e-8,
+                 use_LN_in_critic: bool = False,
+                 use_WD_in_critic: bool = False,
+                 use_LNWD_in_critic: bool = False,
+                 WD_rate: float = 0.0001,
+                 reset_mass_opt_state: bool = False,
+                 ntrlize_thres: float = 2.,
+                 NO_K_mass_thres: bool = True,
+                 weight_scaling: bool = False,
+                 incoming_scale: float = 10.0,
+                 K: int = 5,
+                 mass_thres: float = 10.,
+                 dead_thres: float = 0.1,
+                 weight_revive_eps: float = 0.01,
                  probs_MSE: bool = False,
                  value_MSE: bool = False,
                  use_layer_norm_in_critic: bool = False,
                  use_batch_norm: bool = False,
                  use_weight_decay_in_critic: bool = False,
-                 WD_rate: float = 0.001,
-                 reset_interval: int = 200_000,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
@@ -225,7 +243,10 @@ class DrQHLGaussianLearner(object):
 
         critic_layer_list = get_layer_list(critic)
         actor_layer_list = get_layer_list(actor)
-        critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l or 'dense-1' in l]
+        if ntrlize_shared_dense:
+            critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l or 'dense-1' in l]
+        else:
+            critic1_layer_list = [l for l in critic_layer_list if 'critic0' in l]
         critic2_layer_list = [l for l in critic_layer_list if 'critic1' in l]
         if redo_critic:
             self.critic1_weight_recycler = weight_recyclers.NeuronRecycler(critic1_layer_list, 
@@ -283,7 +304,6 @@ class DrQHLGaussianLearner(object):
                                                                         dormancy_logging_period=dormancy_logging_period, 
                                                                         )
 
-
         self.replay_buffer = replay_buffer
         self.batch_size_statistics = batch_size_statistics
 
@@ -293,6 +313,9 @@ class DrQHLGaussianLearner(object):
         self.temp = temp
         self.rng = rng
         self.step = 0
+        self.redo_critic = redo_critic
+        self.redo_actor = redo_actor
+        self.ntrlize_shared_dense = ntrlize_shared_dense
 
         self.schedule = functools.partial(schedule, schdl=max_value_schedule)
 
@@ -325,11 +348,6 @@ class DrQHLGaussianLearner(object):
         # return state['intermediates']
         intermediates = state['intermediates']
         intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
-        # print(3424, intermediates.keys())#['SharedEncoder', 'dense-1_layernorm_tanh_preact', 'dense-1_layernorm_tanh_act', 'CriticHead']
-        # print(432, intermediates['CriticHead'].keys())['critic0', 'critic1']
-        # print(3242, intermediates['CriticHead']['critic0'].keys())
-        # import time
-        # time.sleep(222)
         activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
         preactivations = {k: v for k, v in intermediates.items() if '_preact' in k and 'conv' not in k}
 
@@ -367,37 +385,60 @@ class DrQHLGaussianLearner(object):
             batch, self.discount, self.tau, self.target_entropy,
             self.step % self.target_update_period == 0, self.probs_MSE, self.value_MSE)
         
-        # is_intermediated = self.critic_weight_recycler.is_intermediated_required(self.step-1)
+        # is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
         # critic_intermediates, critic_preacts = (
         #     self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
         # )
-        # self.critic_weight_recycler.maybe_log_deadneurons(
-        #     self.step-1, critic_intermediates, critic_preacts, new_critic.params
+        # if is_intermediated:
+        #     critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
+        #     critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
+        #     critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
+        #     critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
+        # else:
+        #     critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
+        # self.critic1_weight_recycler.maybe_log_deadneurons(
+        #     self.step, critic1_intermediates, critic1_preacts, new_critic.params
         # ) # step-1: we log the first step's deadneurons
-        # actor_intermediates, actor_preacts = (
-        #     self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None, )
-        # )
-        # self.actor_weight_recycler.maybe_log_deadneurons(
-        #     self.step-1, actor_intermediates, actor_preacts, new_actor.params
-        # )
-        
+       
         is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
         critic_intermediates, critic_preacts = (
             self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
         )
         if is_intermediated:
-            critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
-            critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
+            if self.ntrlize_shared_dense:
+                critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
+                critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
+            else:
+                critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k}
+                critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k}
             critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
             critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
         else:
             critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
+
+        self.rng = new_rng
+        if self.redo_critic:
+            self.rng, key = jax.random.split(self.rng)
+            redone_critic1_params, redone_opt_state = self.critic1_weight_recycler.maybe_update_weights(
+                self.step, critic1_intermediates, new_critic.params, key, new_critic.opt_state_head
+            )
+            self.rng, key = jax.random.split(self.rng)
+            redone_critic2_params, _ = self.critic2_weight_recycler.maybe_update_weights(
+                self.step, critic2_intermediates, new_critic.params, key, new_critic.opt_state_head
+            )
+            new_critic_params = new_critic.params.copy(
+                    add_or_replace={'CriticHead': 
+                                        flax.core.FrozenDict({'critic0': redone_critic1_params['CriticHead']['critic0'], 
+                                            'critic1': redone_critic2_params['CriticHead']['critic1']}),
+                                    'dense-1_layernorm_tanh': 
+                                        flax.core.FrozenDict(redone_critic1_params['dense-1_layernorm_tanh'])
+                                    },
+            )
+            new_critic = new_critic.replace(params=new_critic_params,
+                                            opt_state_head=redone_opt_state)
         self.critic1_weight_recycler.maybe_log_deadneurons(
             self.step, critic1_intermediates, critic1_preacts, new_critic.params
-        ) # step-1: we log the first step's deadneurons
-        # self.critic2_weight_recycler.maybe_log_deadneurons(
-        #     self.step-1, critic2_intermediates, critic2_preacts, new_critic.params['CriticHead']['critic0']
-        # ) # step-1: we log the first step's deadneurons
+        )
         actor_intermediates, actor_preacts = (
             self.get_actor_intermediates(new_actor, new_actor.params) if is_intermediated else (None, None)
         )

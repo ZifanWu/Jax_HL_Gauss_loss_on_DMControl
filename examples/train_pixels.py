@@ -236,9 +236,9 @@ def main(_):
                                 FLAGS.use_batched_random_crop, FLAGS.m_05, env.observation_space.sample()[np.newaxis],
                                 env.action_space.sample()[np.newaxis], FLAGS.reset_interval, **kwargs)
         elif algo == 'drq_hlg':
-            agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
-                                        env.observation_space.sample()[np.newaxis],
-                                        env.action_space.sample()[np.newaxis], **kwargs)
+            agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
+                                        env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                                        FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         return agent
 
     if n_step_trgt > 1:

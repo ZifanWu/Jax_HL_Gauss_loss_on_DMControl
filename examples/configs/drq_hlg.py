@@ -5,6 +5,31 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     config.algo = 'drq_hlg'
+    
+    config.ntrlize_shared_dense = False
+    
+    config.b1 = 0.9
+    config.b2 = 0.999
+    config.adam_eps = 1e-8
+    
+    config.use_LN_in_critic = False
+    config.use_WD_in_critic = False
+    config.use_LNWD_in_critic = False
+    config.WD_rate = 0.0001
+    
+    config.reset_mass_opt_state = False
+    
+    config.ntrlize_thres = 2.
+    config.NO_K_mass_thres = False
+    
+    config.weight_scaling = False
+    config.incoming_scale = 1.0
+    
+    config.mass_thres = 2.
+    config.dead_thres = 0.1
+    config.K = 25
+    config.weight_revive_eps = 0.01
+    
     config.double_q = True
     
     config.probs_MSE = False
