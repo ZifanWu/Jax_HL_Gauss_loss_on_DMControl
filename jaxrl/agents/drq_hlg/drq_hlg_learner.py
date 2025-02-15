@@ -118,6 +118,7 @@ class DrQHLGaussianLearner(object):
                  actions: jnp.ndarray,
                  reset_interval: int,
                  reset_start_step: int,
+                 delta: float = 0.01,
                  ntrlize_shared_dense: bool = False,
                  b1: float = 0.9,
                  b2: float = 0.999,
@@ -262,6 +263,7 @@ class DrQHLGaussianLearner(object):
                                                                         NO_K_mass_thres=NO_K_mass_thres,
                                                                         ntrlize_thres=ntrlize_thres,
                                                                         reset_mass_opt_state=reset_mass_opt_state,
+                                                                        delta=delta,
                                                                         )
             self.critic2_weight_recycler = weight_recyclers.NeuronRecycler(critic2_layer_list, 
                                                                         track=track, 
@@ -276,12 +278,15 @@ class DrQHLGaussianLearner(object):
                                                                         NO_K_mass_thres=NO_K_mass_thres,
                                                                         ntrlize_thres=ntrlize_thres,
                                                                         reset_mass_opt_state=reset_mass_opt_state,
+                                                                        delta=delta,
                                                                         )
         else:
             self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
                                                                         track=track, 
                                                                         dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                        dormancy_logging_period=dormancy_logging_period)
+                                                                        dormancy_logging_period=dormancy_logging_period,
+                                                                        delta=delta,
+                                                                        )
         if redo_actor:
             self.actor_weight_recycler = weight_recyclers.NeuronRecycler(actor_layer_list, 
                                                                         track=track, 
@@ -296,12 +301,14 @@ class DrQHLGaussianLearner(object):
                                                                         NO_K_mass_thres=NO_K_mass_thres,
                                                                         ntrlize_thres=ntrlize_thres,
                                                                         reset_mass_opt_state=reset_mass_opt_state,
+                                                                        delta=delta,
                                                                         )
         else:
             self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
                                                                         track, 
                                                                         dead_neurons_thresholds=dead_neurons_thresholds, 
                                                                         dormancy_logging_period=dormancy_logging_period, 
+                                                                        delta=delta,
                                                                         )
 
         self.replay_buffer = replay_buffer
@@ -350,6 +357,8 @@ class DrQHLGaussianLearner(object):
         intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
         activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
         preactivations = {k: v for k, v in intermediates.items() if '_preact' in k and 'conv' not in k}
+        # for k, v in activations.items():
+        #     print(k, v[0].shape, len(v)) # (B, layer_size)
 
         return activations, preactivations
     

@@ -223,6 +223,18 @@ def topK_and_leastKM_elements(arr: jnp.ndarray, K: int):
   return top_K_values, top_K_indices, indices
 
 
+@functools.partial(jax.jit, static_argnames=('delta', 'B'))
+def compute_srank(matrix, delta, B):
+  """Compute srank(matrix) and other values."""
+  singular_vals = jnp.linalg.svd(
+      matrix, full_matrices=False, compute_uv=False)
+  nuclear_norm = jnp.sum(singular_vals)
+  numerators = jnp.array([jnp.sum(singular_vals[:(i+1)]) for i in range(B)])
+  nonzero_indices = jnp.nonzero(numerators / nuclear_norm >= 1 - delta, size=B)[0]
+  # condition_number = singular_vals[0] / (singular_vals[-1] + 1e-8) # max/min
+  return nonzero_indices[0]
+
+
 @jax.jit
 def check_normality(data: jnp.ndarray):
   mean, std = jnp.mean(data, axis=1, keepdims=True), jnp.std(data, axis=1, keepdims=True) # mean and std for each feature vector in the batch
@@ -263,6 +275,7 @@ class BaseRecycler:
       reset_end_step=100_000_000,
       dormancy_logging_period=20_000,
       sub_mean_score=False,
+      delta=0.01,
   ):
     self.all_layers_names = all_layers_names
     self.track = track
@@ -274,6 +287,7 @@ class BaseRecycler:
     self.dormancy_logging_period = dormancy_logging_period
     self.prev_neuron_score = None
     self.sub_mean_score = sub_mean_score
+    self.delta = delta
 
     # NOTE (ZW) added
     self.historical_dormant_mask = None
@@ -369,6 +383,9 @@ class BaseRecycler:
         prev_score, score, activation, preactivation = prev_score[0], score[0], \
                                                        activation[0], preactivation[0]
         reduce_axes = list(range(activation.ndim - 1)) # more than 2 dims when it's a CNN
+        if self.track and 'dense1' in k and 'critic0' in k:
+          srank = compute_srank(activation, self.delta, activation.shape[0])
+          wandb.log({'critic0_srank': srank.tolist(), 'grad_step': update_step})
         activation = jnp.mean(jnp.abs(activation), axis=reduce_axes)
         # preactivation = jnp.mean(preactivation, axis=reduce_axes)
         prev_masks = self._compute_mask(prev_score)

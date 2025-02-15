@@ -81,6 +81,7 @@ class DrQWPLearner(object):
                  replay_buffer,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 delta: float = 0.01,
                  prune_start_step: int = 4e5,
                  prune_end_step: int = 16e5,
                  actor_lr: float = 3e-4,
@@ -179,11 +180,13 @@ class DrQWPLearner(object):
         self.critic1_weight_recycler = weight_recyclers.BaseRecycler(critic1_layer_list, 
                                                                     track=track, 
                                                                     dead_neurons_thresholds=dead_neurons_thresholds, 
-                                                                    dormancy_logging_period=dormancy_logging_period)
+                                                                    dormancy_logging_period=dormancy_logging_period,
+                                                                    delta=delta)
         self.actor_weight_recycler = weight_recyclers.BaseRecycler(actor_layer_list, 
                                                                     track, 
                                                                     dead_neurons_thresholds=dead_neurons_thresholds, 
                                                                     dormancy_logging_period=dormancy_logging_period, 
+                                                                    delta=delta
                                                                     )
 
         self.replay_buffer = replay_buffer
