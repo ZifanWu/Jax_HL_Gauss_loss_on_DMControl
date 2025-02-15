@@ -48,7 +48,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_hlg.py',
+    'configs/drq_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 

@@ -383,9 +383,10 @@ class BaseRecycler:
         prev_score, score, activation, preactivation = prev_score[0], score[0], \
                                                        activation[0], preactivation[0]
         reduce_axes = list(range(activation.ndim - 1)) # more than 2 dims when it's a CNN
-        if self.track and 'dense1' in k and 'critic0' in k:
+        if self.track and 'critic0' in k:
           srank = compute_srank(activation, self.delta, activation.shape[0])
-          wandb.log({'critic0_srank': srank.tolist(), 'grad_step': update_step})
+          layer = 'dense0' if 'dense0' in k else 'dense1'
+          wandb.log({'critic0_{}_srank'.format(layer): srank.tolist(), 'grad_step': update_step})
         activation = jnp.mean(jnp.abs(activation), axis=reduce_axes)
         # preactivation = jnp.mean(preactivation, axis=reduce_axes)
         prev_masks = self._compute_mask(prev_score)

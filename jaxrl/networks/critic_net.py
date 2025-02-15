@@ -84,8 +84,6 @@ class ActivationTrackCritic(nn.Module):
             if self.dropout_rate is not None:
                 x = nn.Dropout(rate=self.dropout_rate)(
                     x, deterministic=not training)
-            # if i == len(self.hidden_dims) - 1:
-                
         layer = nn.Dense(self.n_logits, kernel_init=default_init(), name='final')
         x = layer(x)
         x = IdentityLayer(name=f'{layer.name}_act')(x)
