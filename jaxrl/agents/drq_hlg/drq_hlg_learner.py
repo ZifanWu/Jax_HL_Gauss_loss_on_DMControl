@@ -39,10 +39,10 @@ def _update_jit(
     support = jnp.linspace(min_value, max_value, n_logits + 1, dtype=jnp.float32) # logits are centers! (ie, num of classes)
     centers = (support[:-1] + support[1:]) / 2
     support = support[None, :].repeat(batch_size, axis=0) # (B, n_logits+1)
-    
+
     def transform_to_probs(target): # (B,)
         target = jnp.clip(target, min_value, max_value)
-        # print(target.shape, support.shape) # (512) (B, n_logits+1)
+        # print(target.shape, support.shape) # (B,) (B, n_logits+1)
         cdf_evals = jax.scipy.special.erf((support - target[:, None]) / (jnp.sqrt(2) * sigma)) # (B, n_logits+1)
         z = cdf_evals[:, -1] - cdf_evals[:, 0] # (B,)
         bin_probs = cdf_evals[:, 1:] - cdf_evals[:, :-1] # (B, n_logits)
@@ -114,6 +114,8 @@ class DrQHLGaussianLearner(object):
                  redo_critic: bool,
                  redo_actor: bool,
                  neutralize_dormant_neurons: bool,
+                 sparse_reward: bool,
+                 sparse_steps: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  reset_interval: int,
@@ -323,6 +325,8 @@ class DrQHLGaussianLearner(object):
         self.redo_critic = redo_critic
         self.redo_actor = redo_actor
         self.ntrlize_shared_dense = ntrlize_shared_dense
+        self.sparse_reward = sparse_reward
+        self.sparse_steps = sparse_steps
 
         self.schedule = functools.partial(schedule, schdl=max_value_schedule)
 
@@ -383,6 +387,8 @@ class DrQHLGaussianLearner(object):
 
     def update(self, batch: Batch) -> InfoDict:
         self.step += 1
+        if self.sparse_reward and self.step <= self.sparse_steps:
+            batch = batch._replace(rewards=np.zeros_like(batch.rewards))
 
         max_value = self.schedule(step=self.step)
         self.max_value = max_value

@@ -79,6 +79,8 @@ class DrQLearner(object):
                  redo_critic: bool,
                  redo_actor: bool,
                  neutralize_dormant_neurons: bool,
+                 sparse_reward: bool,
+                 sparse_steps: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  reset_interval: int,
@@ -256,6 +258,8 @@ class DrQLearner(object):
         self.redo_critic = redo_critic
         self.redo_actor = redo_actor
         self.ntrlize_shared_dense = ntrlize_shared_dense
+        self.sparse_reward = sparse_reward
+        self.sparse_steps = sparse_steps
 
     def sample_actions(self,
                        observations: np.ndarray,
@@ -315,6 +319,8 @@ class DrQLearner(object):
 
     def update(self, batch: Batch) -> InfoDict:
         self.step += 1
+        if self.sparse_reward and self.step <= self.sparse_steps:
+            batch = batch._replace(rewards=np.zeros_like(batch.rewards))
 
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
             self.rng, self.actor, self.critic, self.target_critic, self.temp,

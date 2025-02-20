@@ -26,7 +26,9 @@ flags.DEFINE_boolean('redo_actor', False, 'Whether to redo dormant neurons in th
 flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and massive neurons in the critic head periodically.')
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval') # NOTE 100000 for Reset
 flags.DEFINE_integer('reset_start_step', int(1), 'Reset time interval')
-# flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval')
+flags.DEFINE_boolean('sparse_reward', False, 'If set to True, zero reward for the first `sparse_steps`.')
+flags.DEFINE_integer('sparse_steps', int(1e6), 'The number of gradient steps with zero reward.')
+
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
 flags.DEFINE_boolean('multivariate_normalpolicy', False, 'Whether to use a multivariate_normal policy.')
@@ -77,12 +79,9 @@ def merge_configs(flags_obj: Any, config_dict: ConfigDict) -> Dict[str, Any]:
     """
     # Convert FLAGS to dictionary with actual values
     flags_dict = {}
-    # 获取所有 FLAGS 的值
     for flag_name in dir(flags_obj):
-        # 跳过内部属性和方法
         if not flag_name.startswith('_'):
             try:
-                # 获取实际的值而不是 Flag 对象
                 flags_dict[flag_name] = getattr(flags_obj, flag_name)
             except Exception:
                 continue
@@ -224,10 +223,11 @@ def main(_):
     def create_new_agent(env, buffer):
         if algo == 'drq':
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
+                               FLAGS.sparse_reward, FLAGS.sparse_steps,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         elif algo == 'drq_weight_pruning':
-            agent = DrQWPLearner(FLAGS.seed, FLAGS.track, buffer,
+            agent = DrQWPLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.sparse_reward, FLAGS.sparse_steps,
                                env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                **kwargs)
         elif algo == 'drq_v2':
@@ -237,6 +237,7 @@ def main(_):
                                 env.action_space.sample()[np.newaxis], FLAGS.reset_interval, **kwargs)
         elif algo == 'drq_hlg':
             agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
+                                         FLAGS.sparse_reward, FLAGS.sparse_steps,
                                         env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
                                         FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         return agent

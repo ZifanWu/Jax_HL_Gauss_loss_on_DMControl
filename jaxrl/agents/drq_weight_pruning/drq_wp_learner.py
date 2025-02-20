@@ -79,6 +79,8 @@ class DrQWPLearner(object):
                  seed: int,
                  track: bool,
                  replay_buffer,
+                 sparse_reward: bool,
+                 sparse_steps: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  delta: float = 0.01,
@@ -191,6 +193,8 @@ class DrQWPLearner(object):
 
         self.replay_buffer = replay_buffer
         self.batch_size_statistics = batch_size_statistics
+        self.sparse_reward = sparse_reward
+        self.sparse_steps = sparse_steps
 
     def sample_actions(self,
                        observations: np.ndarray,
@@ -250,6 +254,8 @@ class DrQWPLearner(object):
 
     def update(self, batch: Batch) -> InfoDict:
         self.step += 1
+        if self.sparse_reward and self.step <= self.sparse_steps:
+            batch = batch._replace(rewards=np.zeros_like(batch.rewards))
         
         # _update_jit_fn = jax.jit(
         #     functools.partial(
