@@ -27,7 +27,7 @@ flags.DEFINE_boolean('ntrlize_d_neurons', False, 'Whether to neutralize dead and
 flags.DEFINE_integer('reset_interval', 1000, 'Reset time interval') # NOTE 100000 for Reset
 flags.DEFINE_integer('reset_start_step', int(1), 'Reset time interval')
 flags.DEFINE_boolean('sparse_reward', False, 'If set to True, zero reward for the first `sparse_steps`.')
-flags.DEFINE_integer('sparse_steps', int(1e6), 'The number of gradient steps with zero reward.')
+flags.DEFINE_integer('sparse_steps', int(5e5), 'The number of gradient steps with zero reward.')
 
 flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img augmentation.')
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
@@ -50,7 +50,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_default.py',
+    'configs/drq_hlg.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
