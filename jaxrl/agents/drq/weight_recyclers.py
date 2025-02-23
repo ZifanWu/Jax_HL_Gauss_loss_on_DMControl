@@ -318,14 +318,14 @@ class BaseRecycler:
     return False
 
   def is_intermediated_required(self, update_step):
-    return True#self.is_logging_step(update_step) # TODO debugging
+    return self.is_logging_step(update_step) # TODO debugging
 
   def is_logging_step(self, step):
     return step % self.dormancy_logging_period == 0
 
   def maybe_log_deadneurons(self, update_step, intermediates, preactivations, params):
     is_logging = self.is_logging_step(update_step)
-    if True:#is_logging: # TODO debugging
+    if is_logging: # TODO debugging
       self.log_historical_dead_neuron_overlapping(intermediates, preactivations, params, update_step)
   
   def _compute_mask(self, score_dict):
