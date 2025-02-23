@@ -318,14 +318,14 @@ class BaseRecycler:
     return False
 
   def is_intermediated_required(self, update_step):
-    return self.is_logging_step(update_step) # TODO debugging
+    return True#self.is_logging_step(update_step) # TODO debugging
 
   def is_logging_step(self, step):
     return step % self.dormancy_logging_period == 0
 
   def maybe_log_deadneurons(self, update_step, intermediates, preactivations, params):
     is_logging = self.is_logging_step(update_step)
-    if is_logging: # TODO debugging
+    if True:#is_logging: # TODO debugging
       self.log_historical_dead_neuron_overlapping(intermediates, preactivations, params, update_step)
   
   def _compute_mask(self, score_dict):
@@ -383,9 +383,10 @@ class BaseRecycler:
         prev_score, score, activation, preactivation = prev_score[0], score[0], \
                                                        activation[0], preactivation[0]
         reduce_axes = list(range(activation.ndim - 1)) # more than 2 dims when it's a CNN
-        if self.track and 'dense1' in k and 'critic0' in k:
+        if self.track and 'critic0' in k:
           srank = compute_srank(activation, self.delta, activation.shape[0])
-          wandb.log({'critic0_srank': srank.tolist(), 'grad_step': update_step})
+          layer = 'dense0' if 'dense0' in k else 'dense1'
+          wandb.log({'critic0_{}_srank'.format(layer): srank.tolist(), 'grad_step': update_step})
         activation = jnp.mean(jnp.abs(activation), axis=reduce_axes)
         # preactivation = jnp.mean(preactivation, axis=reduce_axes)
         prev_masks = self._compute_mask(prev_score)
@@ -397,7 +398,10 @@ class BaseRecycler:
         if self.track and 'dense' in k and ('critic0' in k or 'actor' in k or 'layernorm' in k):
           wandb.log({'{}_mean_activation'.format(layer_name): jnp.mean(activation).tolist(), 'grad_step': update_step})
           wandb.log({'{}_mean_preactivation'.format(layer_name): jnp.mean(preactivation).tolist(), 'grad_step': update_step})
-          # wandb.log({'{}_std_preactivation'.format(layer_name): jnp.std(preactivation), 'grad_step': update_step})
+          if 'dense1' in k and ('critic0' in k):
+            bias_key = 'CriticHead/' + layer_name + '/bias'
+            bias = param_dict[bias_key]
+            wandb.log({'{}_preactivation_minus_b'.format(layer_name): jnp.mean(jnp.mean(preactivation, axis=0)  - bias).tolist(), 'grad_step': update_step})
 
           # we want to check if the preactivation distribution within a layer is some Gaussian, 
           # so we check if quantiles matches the theoretical quantiles of the Gaussian with that mean and that std
