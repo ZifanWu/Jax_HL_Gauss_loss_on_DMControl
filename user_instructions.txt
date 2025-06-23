@@ -1,0 +1,72 @@
+Run the following commands:
+
+- sudo apt-get update; sudo apt-get install make build-essential libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+  sudo apt-get -y install wget unzip software-properties-common \
+    libgl1-mesa-dev \
+    libgl1-mesa-glx \
+    libglew-dev \
+    libosmesa6-dev patchelf
+
+  mkdir -p ~/miniconda3
+  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+  bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+  rm ~/miniconda3/miniconda.sh
+  source ~/miniconda3/bin/activate
+  conda init
+
+################################################################################
+- ## Create conda
+
+  conda create -n jaxrl python=3.9 mesalib glew glfw -c conda-forge -y
+  conda activate jaxrl
+  
+################################################################################
+  ## Install mujoco dependency
+
+  USER_DIR=$USER
+  echo $USER_DIR
+  wget -c "https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz"
+  mkdir -p /home/$USER_DIR/.mujoco
+  cp mujoco210-linux-x86_64.tar.gz /home/$USER_DIR/mujoco.tar.gz
+  rm mujoco210-linux-x86_64.tar.gz
+  mkdir -p /home/$USER_DIR/.mujoco
+  tar -zxvf /home/$USER_DIR/mujoco.tar.gz -C /home/$USER_DIR/.mujoco
+  echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/$USER_DIR/.mujoco/mujoco210/bin" >> ~/.bashrc
+  echo "export MUJOCO_PY_MUJOCO_PATH=/home/$USER_DIR/.mujoco/mujoco210" >> ~/.bashrc
+
+  python
+  import mujoco_py
+  # you may need to manually modify the .bashrc file as instructed by the error message from running import mujoco_py
+
+################################################################################
+- # activate 
+
+  source ~/.bashrc
+  conda activate jaxrl
+
+################################################################################
+- # install 
+
+  export CC="/usr/bin/gcc"
+  pip install "mujoco_py>=2.0"
+  pip install "cython<3"
+
+  conda activate jaxrl
+  git clone https://github.com/ZifanWu/jaxpruner
+  cd jaxpruner
+  pip install -e .
+  git add ./
+  git commit -m 'local_discarded'
+  git checkout fixed_bugs_for_jaxrl_0430
+
+################################################################################
+- conda activate jaxrl
+
+  git checkout ntrlize_one_mass_neuron_in_one_time
+  conda activate jaxrl
+  pip install -e .
+  pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+  pip install chex==0.1.84  flax==0.8.5 tensorflow-probability==0.24.0
+  
