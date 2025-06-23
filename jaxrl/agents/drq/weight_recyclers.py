@@ -408,9 +408,9 @@ class BaseRecycler:
           cdf_diff = check_normality(preactivation)
           wandb.log({'{}_cdf_difference'.format(layer_name): cdf_diff.tolist(), 'grad_step': update_step})
           quantiles = compute_quantiles(jnp.mean(preactivation, axis=0), jnp.array([0.25, 0.5, 0.75]))
-          wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0].tolist(), 'grad_step': update_step})
-          wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1].tolist(), 'grad_step': update_step})
-          wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2].tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_preact_1qt'.format(layer_name): quantiles[0].tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_preact_2qt'.format(layer_name): quantiles[1].tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_preact_3qt'.format(layer_name): quantiles[2].tolist(), 'grad_step': update_step})
         thres_idx = 0
         for curr_mask, prev_mask, curr_nondead_mask in zip(curr_masks, prev_masks, curr_nondead_masks):
           if ('critic0' in k or 'actor' in k or 'layernorm' in k) and 'dense0' in k:
@@ -467,40 +467,40 @@ class BaseRecycler:
           wandb.log({'{}_top1_activation'.format(layer_name): top3_values[0].tolist(), 'grad_step': update_step})
           wandb.log({'{}_top2_activation'.format(layer_name): top3_values[1].tolist(), 'grad_step': update_step})
           wandb.log({'{}_top3_activation'.format(layer_name): top3_values[2].tolist(), 'grad_step': update_step})
-          wandb.log({'{}_top1_idx'.format(layer_name): top3_indices[0].tolist(), 'grad_step': update_step})
-          wandb.log({'{}_top2_idx'.format(layer_name): top3_indices[1].tolist(), 'grad_step': update_step})
-          wandb.log({'{}_top3_idx'.format(layer_name): top3_indices[2].tolist(), 'grad_step': update_step})
-          sum_acti = jnp.sum(activation)
-          wandb.log({'{}_mean_excluding_top1_activation'.format(layer_name): ((sum_acti-top3_values[0])/(jnp.size(activation)-1)).tolist(), 'grad_step': update_step})
-          wandb.log({'{}_mean_excluding_top2_activation'.format(layer_name): ((sum_acti-top3_values[0]-top3_values[1])/(jnp.size(activation)-2)).tolist(), 'grad_step': update_step})
-          wandb.log({'{}_mean_excluding_top3_activation'.format(layer_name): ((sum_acti-top3_values.sum())/(jnp.size(activation)-3)).tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_top1_idx'.format(layer_name): top3_indices[0].tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_top2_idx'.format(layer_name): top3_indices[1].tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_top3_idx'.format(layer_name): top3_indices[2].tolist(), 'grad_step': update_step})
+          # sum_acti = jnp.sum(activation)
+          # wandb.log({'{}_mean_excluding_top1_activation'.format(layer_name): ((sum_acti-top3_values[0])/(jnp.size(activation)-1)).tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_mean_excluding_top2_activation'.format(layer_name): ((sum_acti-top3_values[0]-top3_values[1])/(jnp.size(activation)-2)).tolist(), 'grad_step': update_step})
+          # wandb.log({'{}_mean_excluding_top3_activation'.format(layer_name): ((sum_acti-top3_values.sum())/(jnp.size(activation)-3)).tolist(), 'grad_step': update_step})
 
       # log weights
-      if self.track and self.historical_dormant_mask is not None:
-        for k in self.reset_layers:
-          if 'dense' in k and ('critic0' in k or 'actor' in k or 'layernorm' in k):
-            top3_indices = dense_top3_indices.pop(0)
-            param_key = k + '/kernel'
-            bias_key = k + '/bias'
-            abs_param = jnp.abs(param_dict[param_key]) # (8, 8, 4, 32)(4, 4, 32, 64)(3, 3, 64, 64)(7744, 512)(512, 6)
-            wandb.log({'{}_w_mean'.format(k): abs_param.mean().tolist(), 'grad_step': update_step})
-            quantiles = compute_quantiles(abs_param, jnp.array([0.25, 0.5, 0.75]))
-            wandb.log({'{}_w_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
-            wandb.log({'{}_w_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
-            wandb.log({'{}_w_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
-            wandb.log({'{}_top1_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[0]]).tolist(), 'grad_step': update_step})
-            wandb.log({'{}_top2_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[1]]).tolist(), 'grad_step': update_step})
-            wandb.log({'{}_top3_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[2]]).tolist(), 'grad_step': update_step})
-            if ('critic0' in k or 'actor' in k) and 'dense1' in k:
-              for idx, dormancy_mask in enumerate(dense0_dormancy_masks):
-                wandb.log({'Dense_0_{}_dormant_out_w_mean'.format(self.dead_neurons_thresholds[idx]): jnp.mean(abs_param[dormancy_mask].mean()).tolist(), 'grad_step': update_step})
+      # if self.track and self.historical_dormant_mask is not None:
+      #   for k in self.reset_layers:
+      #     if 'dense' in k and ('critic0' in k or 'actor' in k or 'layernorm' in k):
+      #       top3_indices = dense_top3_indices.pop(0)
+      #       param_key = k + '/kernel'
+      #       bias_key = k + '/bias'
+      #       abs_param = jnp.abs(param_dict[param_key]) # (8, 8, 4, 32)(4, 4, 32, 64)(3, 3, 64, 64)(7744, 512)(512, 6)
+      #       wandb.log({'{}_w_mean'.format(k): abs_param.mean().tolist(), 'grad_step': update_step})
+      #       quantiles = compute_quantiles(abs_param, jnp.array([0.25, 0.5, 0.75]))
+      #       wandb.log({'{}_w_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_w_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_w_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_top1_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[0]]).tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_top2_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[1]]).tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_top3_out_w_mean'.format(k): jnp.mean(abs_param[top3_indices[2]]).tolist(), 'grad_step': update_step})
+      #       if ('critic0' in k or 'actor' in k) and 'dense1' in k:
+      #         for idx, dormancy_mask in enumerate(dense0_dormancy_masks):
+      #           wandb.log({'Dense_0_{}_dormant_out_w_mean'.format(self.dead_neurons_thresholds[idx]): jnp.mean(abs_param[dormancy_mask].mean()).tolist(), 'grad_step': update_step})
             
-            abs_bias = jnp.abs(param_dict[bias_key])
-            wandb.log({'{}_b_mean'.format(k): abs_bias.mean().tolist(), 'grad_step': update_step})
-            quantiles = compute_quantiles(abs_bias, jnp.array([0.25, 0.5, 0.75]))
-            wandb.log({'{}_b_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
-            wandb.log({'{}_b_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
-            wandb.log({'{}_b_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
+      #       abs_bias = jnp.abs(param_dict[bias_key])
+      #       wandb.log({'{}_b_mean'.format(k): abs_bias.mean().tolist(), 'grad_step': update_step})
+      #       quantiles = compute_quantiles(abs_bias, jnp.array([0.25, 0.5, 0.75]))
+      #       wandb.log({'{}_b_1qt'.format(k): quantiles[0].tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_b_2qt'.format(k): quantiles[1].tolist(), 'grad_step': update_step})
+      #       wandb.log({'{}_b_3qt'.format(k): quantiles[2].tolist(), 'grad_step': update_step})
         
       # layer_name = k[k.find('/')+1:k.rfind('/')-4]
       self.prev_neuron_score = neuron_score_dict

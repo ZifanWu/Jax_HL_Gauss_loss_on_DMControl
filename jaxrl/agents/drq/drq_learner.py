@@ -175,11 +175,8 @@ class DrQLearner(object):
         def get_layer_list(model: Model) -> list[str]:
             param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
             layer_list = list(param_dict.keys())
-            # print(1111, layer_list)
             layer_list = [l[:l.rfind('/')] for l in layer_list]
-            # print(2222, layer_list)
             layer_list = list(dict.fromkeys(layer_list))
-            # print(3333, layer_list)
             # layer_list = [l for l in layer_list if 'final' not in l and l != '']
             layer_list = [l for l in layer_list if ('dense' in l or 'final' in l)]
             print('layer name list: ', layer_list)
@@ -288,11 +285,8 @@ class DrQLearner(object):
         # return state['intermediates']
         intermediates = state['intermediates']
         intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
-        # print(3424, intermediates.keys())#['SharedEncoder', 'dense-1_layernorm_tanh_preact', 'dense-1_layernorm_tanh_act', 'CriticHead']
-        # print(432, intermediates['CriticHead'].keys())['critic0', 'critic1']
-        # print(3242, intermediates['CriticHead']['critic0'].keys())
-        # import time
-        # time.sleep(222)
+        # intermediates.keys(): ['SharedEncoder', 'dense-1_layernorm_tanh_preact', 'dense-1_layernorm_tanh_act', 'CriticHead']
+        # intermediates['CriticHead'].keys(): ['critic0', 'critic1']
         activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
         preactivations = {k: v for k, v in intermediates.items() if '_preact' in k and 'conv' not in k}
 

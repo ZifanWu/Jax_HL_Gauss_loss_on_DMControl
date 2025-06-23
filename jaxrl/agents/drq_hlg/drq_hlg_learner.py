@@ -234,11 +234,8 @@ class DrQHLGaussianLearner(object):
         def get_layer_list(model: Model) -> list[str]:
             param_dict = flax.traverse_util.flatten_dict(model.params, sep='/')
             layer_list = list(param_dict.keys())
-            # print(1111, layer_list)
             layer_list = [l[:l.rfind('/')] for l in layer_list]
-            # print(2222, layer_list)
             layer_list = list(dict.fromkeys(layer_list))
-            # print(3333, layer_list)
             # layer_list = [l for l in layer_list if 'final' not in l and l != '']
             layer_list = [l for l in layer_list if ('dense' in l or 'final' in l)]
             print('layer name list: ', layer_list)
@@ -377,7 +374,6 @@ class DrQHLGaussianLearner(object):
             capture_intermediates=filter_rep,#lambda l, _: l.name is not None and 'act' in l.name,
             mutable=['intermediates'],
         )
-        # return state['intermediates']
         intermediates = state['intermediates']
         intermediates = flax.traverse_util.flatten_dict(intermediates, sep='/')
         activations = {k: v for k, v in intermediates.items() if '_act' in k and 'conv' not in k}
@@ -399,21 +395,6 @@ class DrQHLGaussianLearner(object):
             self.rng, self.actor, self.critic, self.target_critic, self.temp,
             batch, self.discount, self.tau, self.target_entropy,
             self.step % self.target_update_period == 0, self.probs_MSE, self.value_MSE)
-        
-        # is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
-        # critic_intermediates, critic_preacts = (
-        #     self.get_critic_intermediates(new_critic, new_critic.params) if is_intermediated else (None, None)
-        # )
-        # if is_intermediated:
-        #     critic1_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic0' in k or 'dense-1' in k}
-        #     critic1_preacts = {k: v for k, v in critic_preacts.items() if 'critic0' in k or 'dense-1' in k}
-        #     critic2_intermediates = {k: v for k, v in critic_intermediates.items() if 'critic1' in k}
-        #     critic2_preacts = {k: v for k, v in critic_preacts.items() if 'critic1' in k}
-        # else:
-        #     critic1_intermediates, critic2_intermediates, critic1_preacts, critic2_preacts = [None] * 4
-        # self.critic1_weight_recycler.maybe_log_deadneurons(
-        #     self.step, critic1_intermediates, critic1_preacts, new_critic.params
-        # ) # step-1: we log the first step's deadneurons
        
         is_intermediated = self.critic1_weight_recycler.is_intermediated_required(self.step)
         critic_intermediates, critic_preacts = (

@@ -37,7 +37,7 @@
 # python train.py --save_dir= /scratch/general/nfs1/$USER/  --env_name hopper-hop --updates_per_step 32 --track \
 #                                       --index=${SLURM_ARRAY_TASK_ID}
 
-MUJOCO_GL=egl /scratch/general/vast/$USER/conda/envs/jaxrl0430/bin/python train_pixels.py --save_dir= /scratch/general/nfs1/$USER/ --index=${SLURM_ARRAY_TASK_ID} --track 
+MUJOCO_GL=egl /scratch/general/vast/$USER/conda/envs/jaxrl/bin/python train_pixels.py --save_dir= /scratch/general/nfs1/$USER/ --index=${SLURM_ARRAY_TASK_ID} --track 
 
 
 # copy data from scratch (if needed)

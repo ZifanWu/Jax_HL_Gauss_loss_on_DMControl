@@ -107,13 +107,8 @@ def main(_):
     from jaxrl.utils import make_env
     settings = []
     kwargs = dict(FLAGS.config)
+    # +++++++++++++++++++++++++For slurm scheduling+++++++++++++++++++++++++
     if FLAGS.index is not None:
-        # for i in [
-        #           ('hopper-hop', (2048, 2048), 0.01, 400, 1, 1), ('hopper-hop', (2048, 2048), 0.01, 200, 1, 1),
-        #           ('hopper-hop', (2048, 2048), 0.0001, 200, 1, 1), ('hopper-hop', (2048, 2048), 0.01, 400, 3, 1),
-        #           ('hopper-hop', (2048, 2048), 0.01, 100, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 200, 1, 4),
-        #           ('hopper-hop', (2048, 2048), 0.01, 400, 1, 4), ('hopper-hop', (2048, 2048), 0.01, 100, 1, 2)
-        #           ]:
         for i in ['pendulum-swingup', 'finger-turn_hard', 'finger-turn_easy']:
             for j in [True]:
                 for k in [1000]:
@@ -141,7 +136,8 @@ def main(_):
         # FLAGS.updates_per_step = setting_for_this_idx
         # FLAGS.config['max_value'] = FLAGS.config['n_logits']
         # FLAGS.config['actor_hidden_dims'] = FLAGS.config['critic_hidden_dims']
-        
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
+
     if kwargs['algo'] == 'drq_hlg':
         if FLAGS.config['actor_hidden_dims'][0] >= 1024:
             FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['actor_hidden_dims'][0]
@@ -152,8 +148,6 @@ def main(_):
             FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
             FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
 
-    if FLAGS.env_name == 'quadruped-run': # NOTE
-        FLAGS.config['replay_buffer_size'] = 100000
     if 'humanoid' in FLAGS.env_name:
         FLAGS.config['latent_dim'] = 100
         # FLAGS.config['actor_lr'] = 8e-5
@@ -345,7 +339,7 @@ def main(_):
                 #     add_or_replace={'SharedEncoder': old_critic_enc})
                 # agent.actor = agent.actor.replace(params=new_actor_params)
                 
-                # NOTE (added by ZW)
+                # NOTE (added by ZW) doesn't have much effect except for Hopper
                 agent.actor = old_actor
                 # agent.actor = agent.actor.replace(opt_state=old_actor_opt)
                 
