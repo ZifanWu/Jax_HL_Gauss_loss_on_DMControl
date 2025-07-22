@@ -445,12 +445,14 @@ class BaseRecycler:
             else 0.0
           )
 
-          if self.track and 'dense' in k and ('critic0' in k or 'actor' in k or 'layernorm' in k):
+          if self.track and 'critic' in k and 'dense' in k:
+            wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
+          if self.track and 'dense' in k and ('critic' in k or 'actor' in k or 'layernorm' in k):
             wandb.log({'{}_{}_historical_overlap_rate'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): percent, 'grad_step': update_step})
             # wandb.log({'{}_{}_current_historical_ratio(pre_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): (curr_dead_count / pre_hist_dead_count), 'grad_step': update_step})
             # wandb.log({'{}_{}_historical_dormant_count(post_merging)'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): post_hist_dead_count, 'grad_step': update_step})
             wandb.log({'{}_{}_dead_intersected_percent'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): prev_intersect_percent, 'grad_step': update_step})
-            wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
+            # wandb.log({'{}_{}_dormant_percentage'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): float(curr_dead_count) / jnp.size(score), 'grad_step': update_step})
 
             wandb.log({'{}_{}_mean_activation_recycled'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[prev_mask]).tolist(), 'grad_step': update_step})
             wandb.log({'{}_{}_mean_activation_nondead'.format(layer_name, self.dead_neurons_thresholds[thres_idx]): jnp.mean(activation[curr_nondead_mask]).tolist(), 'grad_step': update_step})

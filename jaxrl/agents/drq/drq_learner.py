@@ -106,7 +106,9 @@ class DrQLearner(object):
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
                  temp_lr: float = 3e-4,
-                 hidden_dims: Sequence[int] = (256, 256),
+                #  hidden_dims: Sequence[int] = (256, 256),
+                 actor_hidden_dims: Sequence[int] = (256, 256),
+                 critic_hidden_dims: Sequence[int] = (256, 256),
                  batch_size: int = 512,
                  batch_size_statistics: int = 256,
                  dead_neurons_thresholds: Sequence[float] = [0., 0.025, 0.1],
@@ -136,7 +138,7 @@ class DrQLearner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
-        actor_def = DrQPolicy(hidden_dims, action_dim, cnn_features,
+        actor_def = DrQPolicy(actor_hidden_dims, action_dim, cnn_features,
                               cnn_strides, cnn_padding, latent_dim)
         actor = Model.create(actor_def,
                              inputs=[actor_key, observations],
@@ -144,7 +146,7 @@ class DrQLearner(object):
 
         # critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
         #                                             cnn_padding, latent_dim)
-        critic_def = ActivationTrackDrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
+        critic_def = ActivationTrackDrQDoubleCritic(critic_hidden_dims, cnn_features, cnn_strides,
                                                     cnn_padding, latent_dim,
                                                     use_LN=use_LNWD_in_critic or use_LN_in_critic)
         if use_LNWD_in_critic or use_WD_in_critic:
