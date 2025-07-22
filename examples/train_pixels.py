@@ -50,7 +50,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_hlg.py',
+    'configs/drq_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -144,9 +144,10 @@ def main(_):
         if FLAGS.config['critic_hidden_dims'][0] >= 1024:
             FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['critic_hidden_dims'][0]
     else:
-        if FLAGS.config['hidden_dims'][0] >= 1024:
-            FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
-            FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['hidden_dims'][0]
+        if FLAGS.config['critic_hidden_dims'][0] >= 1024:
+            FLAGS.config['critic_lr'] = 1e-4 * 1024 / FLAGS.config['critic_hidden_dims'][0]
+        if FLAGS.config['actor_hidden_dims'][0] >= 1024:
+            FLAGS.config['actor_lr'] = 1e-4 * 1024 / FLAGS.config['actor_hidden_dims'][0]
 
     if 'humanoid' in FLAGS.env_name:
         FLAGS.config['latent_dim'] = 100

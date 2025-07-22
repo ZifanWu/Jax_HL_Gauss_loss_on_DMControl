@@ -38,7 +38,9 @@ def get_config():
     config.critic_lr = 3e-4
     config.temp_lr = 3e-4
 
-    config.hidden_dims = (256, 256)
+    # config.hidden_dims = (256, 256)
+    config.actor_hidden_dims = (256, 256)
+    config.critic_hidden_dims = (256, 256)
 
     config.cnn_features = (32, 32, 32, 32)
     config.cnn_strides = (2, 1, 1, 1)
