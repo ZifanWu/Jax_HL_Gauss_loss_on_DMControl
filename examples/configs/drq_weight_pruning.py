@@ -26,7 +26,7 @@ def get_config():
 
     config.batch_size_statistics = 256
     config.dead_neurons_thresholds = [0.0, 0.025, 0.1]
-    config.dormancy_logging_period = 20000
+    config.dormancy_logging_period = 5000
 
     config.discount = 0.99
 
