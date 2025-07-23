@@ -50,7 +50,7 @@ flags.DEFINE_string('wandb_entity', 'zarzard', "the entity (team) of wandb's pro
 flags.DEFINE_integer('index', None, "slurm array index")
 config_flags.DEFINE_config_file(
     'config',
-    'configs/drq_weight_pruning.py',
+    'configs/drq_default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
 
@@ -324,9 +324,11 @@ def main(_):
                 old_critic_enc_opt = agent.critic.opt_state_enc
                 # NOTE (added by ZW)
                 old_actor = agent.actor
+                grad_step = agent.step
                 
                 # create new agent: note that the temperature is new as well
                 agent = create_new_agent(env, replay_buffer)
+                agent.step = grad_step
                 
                 # resetting critic: copy encoder parameters and optimizer statistics
                 new_critic_params = agent.critic.params.copy(
