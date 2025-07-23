@@ -23,7 +23,7 @@ from jaxrl.networks import policies
 from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
 from jaxrl.agents.drq import weight_recyclers
 import jaxpruner
-# from jaxpruner.algorithms.pruners import MagnitudePruning
+from jaxpruner.algorithms.pruners import MagnitudePruning
 from jaxrl.agents.drq_weight_pruning.sparse_util import create_updater_from_config
 
 
@@ -135,7 +135,7 @@ class DrQWPLearner(object):
         #                       tx=optax.adam(learning_rate=critic_lr))
         sparsity_distribution = functools.partial(
             jaxpruner.sparsity_distributions.uniform, sparsity=0.95)
-        self.pruner = jaxpruner.MagnitudePruning(sparsity_distribution_fn=sparsity_distribution,
+        self.pruner = MagnitudePruning(sparsity_distribution_fn=sparsity_distribution,
                                                  scheduler=jaxpruner.sparsity_schedules.PolynomialSchedule(
                                                     update_freq=1000, update_start_step=prune_start_step, update_end_step=prune_end_step)
                                                 )
