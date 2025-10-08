@@ -28,10 +28,10 @@ def get_config():
     config.weight_scaling = False
     config.incoming_scale = 1.0
     
-    config.mass_thres = 2.
+    config.mass_thres = 3.
     config.dead_thres = 0.1
     config.K = 25
-    config.weight_revive_eps = 0.01
+    config.weight_revive_eps = 0.
 
     config.n_step_trgt = 1
 

@@ -9,6 +9,8 @@ import jax.scipy.stats as jstats
 import optax
 import wandb
 
+from .normal_sampling_softmax import sample_normal_and_softmax
+
 
 def leastk_mask(scores, ones_fraction):
   """Given a tensor of scores creates a binary mask.
@@ -64,20 +66,21 @@ def weight_reinit_zero(param, mask):
     return param
   
 
-def weight_shrink(param, mask, k):
-  param = jnp.where(mask == 1, param / k, param)
-  return param
+def weight_shrink(param, next_param, incoming_mask, outgoing_mask, alpha, beta):
+  param = jnp.where(incoming_mask == 1, param * beta, param)
+  next_param = jnp.where(outgoing_mask == 1, next_param * alpha * 1/beta, next_param)
+  return param, next_param
   
 
 def weight_revive(param, next_param, key, 
                   dead_incoming_mask, dead_outgoing_mask,
                   mass_incoming_mask, mass_outgoing_mask,
-                  eps, k):
+                  eps, alpha, beta):
   '''
     dead_neuron_mask: the mask of (M-1) dead neurons
   '''
-  new_incoming_param = (param * mass_incoming_mask) / k
-  new_outgoing_param = next_param * mass_outgoing_mask
+  new_incoming_param = param * mass_incoming_mask * beta
+  new_outgoing_param = next_param * mass_outgoing_mask * alpha * 1/beta
   if eps == 0:
     noise = 0
   else:
@@ -90,9 +93,9 @@ def weight_revive(param, next_param, key,
     noise = 0
   else:
     key, subkey = random.split(key)
-    noise = jax.random.normal(subkey, shape=next_param.shape) * jnp.abs(next_param) * eps
+    # noise = jax.random.normal(subkey, shape=next_param.shape) * jnp.abs(next_param) * eps
   next_param = jnp.where(
-    dead_outgoing_mask, new_outgoing_param + noise, next_param
+    dead_outgoing_mask, new_outgoing_param, next_param
   )
   return param, next_param, key
 
@@ -1059,6 +1062,8 @@ class NeuronRecycler(BaseRecycler):
       #   least_KM_indices = indices[- K * M:]
       # else:
       #   least_KM_indices = indices[-n_death:]
+      # M = int(n_death // K)
+      # M = random.randint(key, (1,), 2, min(int(n_death // K), 6))[0]
       M = int(n_death // K)
       least_KM_indices = indices[- K * M:]
       layer_name = k[k.find('/')+1:]
@@ -1091,54 +1096,71 @@ class NeuronRecycler(BaseRecycler):
         mass_incoming_mask_dict[param_key] = mass_incoming_mask
         mass_outgoing_mask_dict[next_param_key] = mass_outgoing_mask
       
+      key, subkey = random.split(key)
+      betas, ms = [], []
+      for _ in range(K+1):
+        key, subkey = random.split(key)
+        beta = random.uniform(subkey, (1,), minval=0.5, maxval=1.5)[0]
+        betas.append(beta)
+        key, subkey = random.split(key)
+        m = random.randint(subkey, (1,), 2, min(M, 5))[0]
+        ms.append(m)
+      beta = jnp.array(betas)
       for j in range(K):
+        alphas = sample_normal_and_softmax(ms[j], mean=0.0, std=1.0, key=subkey) # NOTE (ZW) (m,)
+        
         mass_neuron_mask = jnp.zeros_like(score)
         mass_neuron_mask = mass_neuron_mask.at[indices[j]].set(1)
         mass_neuron_mask = mass_neuron_mask != 0
         mass_incoming_mask, mass_outgoing_mask = self.create_mask_helper(
             mass_neuron_mask, param, next_param
         )
+
         # Reset incoming weights of massive neurons
         weight_shrink_fn = jax.jit(
-          functools.partial(weight_shrink, k=(M+1))
+          functools.partial(weight_shrink, alpha=alphas[0], beta=betas[0])
         )
-        shrinked_param = weight_shrink_fn(param, mass_incoming_mask)
+        shrinked_param, shrinked_next_param = weight_shrink_fn(param, next_param, mass_incoming_mask, mass_outgoing_mask)
 
         # Reset incoming weights of dead neurons
-        weight_revive_fn = jax.jit(
-            functools.partial(weight_revive, eps=self.weight_revive_eps, k=(M+1))
-        )
-        revive_indices = least_KM_indices[-M:]
-        least_KM_indices = least_KM_indices[:-M]
-        dead_neuron_mask = jnp.zeros_like(score)
-        dead_neuron_mask = dead_neuron_mask.at[revive_indices].set(1)
-        dead_neuron_mask = dead_neuron_mask != 0
-        dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
-                dead_neuron_mask, param, next_param
-          )
         if next_param.shape != mass_outgoing_mask.shape: # First dense layer, shared by two critic heads
           action_dim = next_param.shape[0] - mass_outgoing_mask.shape[0]
           batch_size = mass_outgoing_mask.shape[1]
           mass_outgoing_mask = jnp.vstack([mass_outgoing_mask, jnp.zeros((action_dim, batch_size))])
           dead_outgoing_mask = jnp.vstack([dead_outgoing_mask, jnp.zeros((action_dim, batch_size))])
-          
-        param, next_param, key = weight_revive_fn(
-            param, next_param, key, 
-            dead_incoming_mask, dead_outgoing_mask, 
-            mass_incoming_mask, mass_outgoing_mask
+        weight_revive_fn = jax.jit(
+            functools.partial(weight_revive, eps=self.weight_revive_eps, beta=beta[j+1])
         )
+        revive_indices = least_KM_indices[-ms[j]:]
+        least_KM_indices = least_KM_indices[:-ms[j]]
+        dead_neuron_mask = jnp.zeros_like(score)
+        for i in range(ms[j]):
+          dead_neuron_mask = dead_neuron_mask.at[revive_indices[i]].set(1)
+          dead_neuron_mask = dead_neuron_mask != 0
+          dead_incoming_mask, dead_outgoing_mask = create_mask_helper(
+                  dead_neuron_mask, param, next_param
+            )
+          param, next_param, key = weight_revive_fn(
+              param, next_param, key, 
+              dead_incoming_mask, dead_outgoing_mask, 
+              mass_incoming_mask, mass_outgoing_mask, alpha=alphas[i]
+          )
+          # Replace old weights of dead neurons
+          param_dict[param_key] = param
+          param_dict[next_param_key] = next_param
 
-        # Replace old weights
-        param_dict[param_key] = param
-        param_dict[next_param_key] = next_param
+        # Replace old weights of dominant neurons
         param_dict[param_key] = jnp.where(
           mass_incoming_mask, shrinked_param, param_dict[param_key]
+        )
+        param_dict[next_param_key] = jnp.where(
+          mass_outgoing_mask, shrinked_next_param, param_dict[next_param_key]
         )
 
         # Reset bias
         bias_key = k + '/bias'
         mass_bias = param_dict[bias_key][mass_neuron_mask][0]
-        new_bias = mass_bias / (M + 1)
+        new_bias = mass_bias * betas[j]
         key, subkey = random.split(key)
         param_dict[bias_key] = jnp.where(
             dead_neuron_mask, new_bias, param_dict[bias_key]
