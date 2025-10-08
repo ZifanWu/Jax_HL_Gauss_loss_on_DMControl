@@ -17,6 +17,18 @@ def default_init(scale: Optional[float] = jnp.sqrt(2)):
     return nn.initializers.orthogonal(scale)
 
 
+def get_activation_fn(acti: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
+    """Map activation function name to actual function."""
+    activation_map = {
+        'relu': nn.relu,
+        'silu': nn.silu,
+        'leakyrelu': lambda x: nn.leaky_relu(x, negative_slope=0.01),
+    }
+    if acti not in activation_map:
+        raise ValueError(f"Unknown activation function: {acti}. Choose from {list(activation_map.keys())}")
+    return activation_map[acti]
+
+
 PRNGKey = Any
 Params = flax.core.FrozenDict[str, Any]
 PRNGKey = Any

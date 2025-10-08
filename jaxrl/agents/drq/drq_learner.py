@@ -20,7 +20,7 @@ from jaxrl.agents.sac.critic import target_update
 from jaxrl.agents.sac.critic import update as update_critic
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt, get_activation_fn
 from jaxrl.agents.drq import weight_recyclers
 
 
@@ -86,6 +86,7 @@ class DrQLearner(object):
                  reset_interval: int,
                  reset_start_step: int,
                  delta: float = 0.01,
+                 acti: str = 'relu',
                  ntrlize_shared_dense: bool = False,
                  b1: float = 0.9,
                  b2: float = 0.999,
@@ -138,8 +139,10 @@ class DrQLearner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
+        activation_fn = get_activation_fn(acti)
+
         actor_def = DrQPolicy(actor_hidden_dims, action_dim, cnn_features,
-                              cnn_strides, cnn_padding, latent_dim)
+                              cnn_strides, cnn_padding, latent_dim)#, activations=activation_fn)
         actor = Model.create(actor_def,
                              inputs=[actor_key, observations],
                              tx=optax.adam(learning_rate=actor_lr))
@@ -148,7 +151,8 @@ class DrQLearner(object):
         #                                             cnn_padding, latent_dim)
         critic_def = ActivationTrackDrQDoubleCritic(critic_hidden_dims, cnn_features, cnn_strides,
                                                     cnn_padding, latent_dim,
-                                                    use_LN=use_LNWD_in_critic or use_LN_in_critic)
+                                                    use_LN=use_LNWD_in_critic or use_LN_in_critic,
+                                                    activations=activation_fn)
         if use_LNWD_in_critic or use_WD_in_critic:
             enc_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)
             head_optimizer = optax.adamw(learning_rate=critic_lr, weight_decay=WD_rate)

@@ -85,6 +85,7 @@ class ActivationTrackDrQDoubleCritic(nn.Module):
     cnn_padding: str = 'VALID'
     latent_dim: int = 50
     use_LN: bool = False
+    activations: callable = nn.relu
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
@@ -101,7 +102,7 @@ class ActivationTrackDrQDoubleCritic(nn.Module):
         x = IdentityLayer(name=f'{layer.name}_act')(x)
         x = jnp.concatenate([x, actions], -1)
 
-        return ActivationTrackDoubleCritic(self.hidden_dims, name='CriticHead', use_LN=self.use_LN)(x)
+        return ActivationTrackDoubleCritic(self.hidden_dims, name='CriticHead', use_LN=self.use_LN, activations=self.activations)(x)
 
 
 class ActivationTrackDrQDistributionalDoubleCritic(nn.Module):
@@ -114,6 +115,7 @@ class ActivationTrackDrQDistributionalDoubleCritic(nn.Module):
     num_qs: int = 2
     use_layer_norm: bool = False
     use_batch_norm: bool = False
+    activations: callable = nn.relu
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
@@ -132,9 +134,10 @@ class ActivationTrackDrQDistributionalDoubleCritic(nn.Module):
         x = IdentityLayer(name=f'{layer.name}_act')(x)
         x = jnp.concatenate([x, actions], -1)
 
-        return ActivationTrackDoubleDistributionalCritic(self.hidden_dims, self.n_logits, 
-                                                         num_qs=self.num_qs, name='CriticHead', 
-                                                         use_layer_norm=self.use_layer_norm)(x)
+        return ActivationTrackDoubleDistributionalCritic(self.hidden_dims, self.n_logits,
+                                                         num_qs=self.num_qs, name='CriticHead',
+                                                         use_layer_norm=self.use_layer_norm,
+                                                         activations=self.activations)(x)
 
 
 class DrQDistributionalSingleCritic(nn.Module):
@@ -168,6 +171,7 @@ class DrQPolicy(nn.Module):
     cnn_padding: str = 'VALID'
     latent_dim: int = 50
     use_batch_norm: bool = False
+    activations: callable = nn.relu
 
     @nn.compact
     def __call__(self,
@@ -190,5 +194,5 @@ class DrQPolicy(nn.Module):
         x = nn.tanh(x)
         x = IdentityLayer(name=f'{layer.name}_act')(x)
 
-        return NormalTanhPolicy(self.hidden_dims, self.action_dim)(x,
+        return NormalTanhPolicy(self.hidden_dims, self.action_dim, activations=self.activations)(x,
                                                                    temperature)

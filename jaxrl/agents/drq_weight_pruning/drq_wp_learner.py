@@ -20,7 +20,7 @@ from jaxrl.agents.drq_weight_pruning.critic import target_update
 from jaxrl.agents.drq_weight_pruning.critic import update as update_critic
 from jaxrl.datasets import Batch
 from jaxrl.networks import policies
-from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt
+from jaxrl.networks.common import InfoDict, Model, PRNGKey, ModelDecoupleOpt, get_activation_fn
 from jaxrl.agents.drq import weight_recyclers
 import jaxpruner
 from jaxpruner.algorithms.pruners import MagnitudePruning
@@ -83,6 +83,7 @@ class DrQWPLearner(object):
                  sparse_steps: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 acti: str = 'relu',
                  delta: float = 0.01,
                  prune_start_step: int = 4e5,
                  prune_end_step: int = 16e5,
@@ -120,8 +121,10 @@ class DrQWPLearner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key, pruner_rng = jax.random.split(rng, 5)
 
+        activation_fn = get_activation_fn(acti)
+
         actor_def = DrQPolicy(actor_hidden_dims, action_dim, cnn_features,
-                              cnn_strides, cnn_padding, latent_dim)
+                              cnn_strides, cnn_padding, latent_dim, activations=activation_fn)
         actor = Model.create(actor_def,
                              inputs=[actor_key, observations],
                              tx=optax.adam(learning_rate=actor_lr))
@@ -129,7 +132,7 @@ class DrQWPLearner(object):
         # critic_def = DrQDoubleCritic(hidden_dims, cnn_features, cnn_strides,
         #                                             cnn_padding, latent_dim)
         critic_def = ActivationTrackDrQDoubleCritic(critic_hidden_dims, cnn_features, cnn_strides,
-                                                    cnn_padding, latent_dim)
+                                                    cnn_padding, latent_dim, activations=activation_fn)
         # critic = Model.create(critic_def,
         #                       inputs=[critic_key, observations, actions],
         #                       tx=optax.adam(learning_rate=critic_lr))

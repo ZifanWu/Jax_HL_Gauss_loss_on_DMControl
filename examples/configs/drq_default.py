@@ -7,6 +7,7 @@ def get_config():
     config.algo = 'drq'
     
     config.delta = 0.01
+    config.acti = 'relu'
     
     config.ntrlize_shared_dense = False
     

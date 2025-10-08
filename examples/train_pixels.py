@@ -33,6 +33,7 @@ flags.DEFINE_boolean('use_batched_random_crop', True, 'Whether to use DrQ-v1 img
 flags.DEFINE_boolean('msepolicy', False, 'Whether to use MSEPolicy.')
 flags.DEFINE_boolean('multivariate_normalpolicy', False, 'Whether to use a multivariate_normal policy.')
 flags.DEFINE_boolean('m_05', False, 'Whether to use a multivariate_normal policy.')
+# flags.DEFINE_string('acti', 'relu', 'Activation function: relu, silu, or leakyrelu')
 
 flags.DEFINE_integer('update_freq', 1, 'Update the agent every _ env steps.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updates per step.')
@@ -219,11 +220,11 @@ def main(_):
         if algo == 'drq':
             agent = DrQLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
                                FLAGS.sparse_reward, FLAGS.sparse_steps,
-                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis],
                                FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         elif algo == 'drq_weight_pruning':
             agent = DrQWPLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.sparse_reward, FLAGS.sparse_steps,
-                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                               env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis],
                                **kwargs)
         elif algo == 'drq_v2':
             agent = DrQv2Learner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor,
@@ -233,7 +234,7 @@ def main(_):
         elif algo == 'drq_hlg':
             agent = DrQHLGaussianLearner(FLAGS.seed, FLAGS.track, buffer, FLAGS.redo_critic, FLAGS.redo_actor, FLAGS.ntrlize_d_neurons,
                                          FLAGS.sparse_reward, FLAGS.sparse_steps,
-                                        env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis], 
+                                        env.observation_space.sample()[np.newaxis], env.action_space.sample()[np.newaxis],
                                         FLAGS.reset_interval, FLAGS.reset_start_step, **kwargs)
         return agent
 
