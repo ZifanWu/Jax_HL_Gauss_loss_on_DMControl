@@ -21,9 +21,11 @@ def sample_normal_and_softmax(M, mean=0.0, std=1.0, key=None, use_jax=True):
         raw_samples: 原始采样值
     """
     if use_jax and key is not None:
+        key, subkey = random.split(key)
         # 使用JAX实现
-        raw_samples = random.normal(key, shape=(M+1,)) * std + mean
+        raw_samples = random.normal(subkey, shape=(M+1,)) * std + mean
         softmax_values = softmax(raw_samples)
+        return softmax_values, key
     else:
         # 使用NumPy实现
         raw_samples = np.random.normal(mean, std, size=M+1)
@@ -31,7 +33,7 @@ def sample_normal_and_softmax(M, mean=0.0, std=1.0, key=None, use_jax=True):
         exp_values = np.exp(raw_samples - np.max(raw_samples))  # 减去最大值避免数值溢出
         softmax_values = exp_values / np.sum(exp_values)
     
-    return softmax_values
+        return softmax_values
 
 
 def demo_normal_sampling_softmax():
