@@ -94,10 +94,6 @@ docker build -t ikostrikov/jaxrl . -f Dockerfile
  sudo docker run --rm --gpus all -v <examples-dir>:/jaxrl/ --gpus=all ikostrikov/jaxrl:latest python /jaxrl/train.py --env_name=HalfCheetah-v2 --save_dir=/jaxrl/tmp/
 ```
 
-# Contributing
-
-When contributing to this repository, please first discuss the change you wish to make via issue. If you are not familiar with pull requests, please read [this documentation](https://opensource.com/article/19/7/create-pull-request-github).
-
 # Acknowledgements 
 
 This code is based on [jaxrl]([https://github.com/evgenii-nikishin](https://github.com/ikostrikov/jaxrl/tree/main)) implemented by Ilya Kostrikov.
